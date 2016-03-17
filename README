@@ -1,0 +1,23 @@
+This folder contains the implementation of several Channel estimation techniques in Matlab and C.
+
+C language:
+- main.c: Contains the main program. 5 different channel estimation techniques are implemented and for each, the output generated reflects the channel frequency response.
+- inputs.h: Contains the inputs of the main program. tx_preamble_fft and rx_preamble_fft represent the transmitted and received preambles in the frequency domain. tx_symb and rx_symb represent a vector of length 53*15, where 53 is the number of information in each OFDM block and 15 is the number of OFDM blocks within a frame. OW2 represents an estimation of the received noise power.
+- utils.h: Contains the main functions used to manipulate matrices and operate with them. 
+
+MATLAB language:
+- WiFi_RX: Main program. It's inputs are the transmitted and received preamble and frame in the time domain. It performs 5 different channel estimation techniques and outputs the channel frequency response in each. It also includes an equalization stage, where the channel estimation is applied before the symbols are decoded.
+- WiFi_Inputs: Contains the inputs of the main program. rx_packet and tx_packet are the time domain samples of the received frames without the preamble. tx_lptot and rx_lptot are the transmitted and received preambles, used for channel estimation porpuses only.
+- WiFi_block_extraction: It transforms the received samples in the time domain into symbols.
+- WiFi_Equelization: Equalizes the received symbols dividing them by the estimated Channel Frequency Response. 
+- WiFi_channel_estimation_LT_LS: Performs a Least squares (LS) Channel Estimation using the Training Symbols (TS) and outputs the Channel Frequency Response.
+- WiFi_channel_estimation_PS_Linear: Performs a Least squares (LS) Channel Estimation using the Pilot Subcarriers (PS) and interpolates the result using a Linear Interpolation. Outputs the channel Frequency Response.
+- WiFi_channel_estimation_PS_Cubic: Performs a Least squares (LS) Channel Estimation using the Pilot Subcarriers (PS) and interpolates the result using a Cubic Spline Interpolation. Outputs the channel Frequency Response.
+- WiFi_channel_estimation_PS_Sinc: Performs a Least squares (LS) Channel Estimation using the Pilot Subcarriers (PS) and interpolates the result using a Sinc Interpolation. Outputs the channel Frequency Response.
+- WiFi_channel_estimation_PS_MMSE: Performs a Minimum Mean Square Error (MMSE) Channel Estimation using the Pilot Subcarriers (PS) and the LT_LS estimation. Outputs the channel Frequency Response.
+
+Compilation and Execution in C:
+>> g++ -o utils.o -c utils.c		// Creating link
+>> g++ -o main main.c utils.o		// Linking library and creating executable
+>> ./main				// Execute
+
