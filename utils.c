@@ -1,25 +1,21 @@
 #include "utils.h"
 
-void hermitian(double complex **M,double complex **res){
-	for (int r = 0; r < SAMPUTIL; r++)
-		for(int c = 0 ; c < SAMPUTIL ; c++ )
+void hermitian(long double complex **M, int row, int col, long double complex **res){
+	for (int r = 0; r < row; r++)
+		for(int c = 0 ; c < col ; c++ )
 			res[c][r] = creal(M[r][c]) - cimag(M[r][c]);
 }
 
-void multiply(double complex **M1,double complex **M2,double complex **res){
-	double complex sum = 0;
-	int num_rows1 = sizeof(M1) / sizeof(M1[0]);
-	int num_cols1 = sizeof(M1[0]) / sizeof(M1[0][0]);
-	int num_rows2 = sizeof(M2) / sizeof(M2[0]);
-	int num_cols2 = sizeof(M2[0]) / sizeof(M2[0][0]);
-	if (num_cols1 != num_rows2)
+void multiply(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res){
+	long double complex sum = 0;
+	if (col1 != row2)
 		printf("Matrices dimension missmatch\n");
 	else {
-		for (int c = 0; c < num_rows1; c++) {
-			for (int d = 0; d < num_cols2; d++) {
-				for (int k = 0; k < num_rows2; k++)
+		for (int c = 0; c < row1; c++) {
+			for (int d = 0; d < col2; d++) {
+				for (int k = 0; k < row2; k++){
 					sum = sum + M1[c][k]*M2[k][d];
-
+                }        
 				res[c][d] = sum;
 				sum = 0;
 			}
@@ -27,7 +23,7 @@ void multiply(double complex **M1,double complex **M2,double complex **res){
 	}
 }
 
-void identity(double complex **Identity,int size,double scalar){
+void identity(long double complex **Identity,int size,double scalar){
 	for (int c = 0; c < size; c++) {
 		for (int r = 0; r < size; r++) {
 			if(c==r)
@@ -38,16 +34,12 @@ void identity(double complex **Identity,int size,double scalar){
 	}
 }
 
-void addition(double complex **M1,double complex **M2,double complex **res){
-	int num_rows1 = sizeof(M1) / sizeof(M1[0]);
-	int num_cols1 = sizeof(M1[0]) / sizeof(M1[0][0]);
-	int num_rows2 = sizeof(M2) / sizeof(M2[0]);
-	int num_cols2 = sizeof(M2[0]) / sizeof(M2[0][0]);
-	if((num_rows1 != num_rows2) || (num_cols1 != num_cols2))
-		printf("Matrices dimension missmatch \n");
-	else {
-		for (int c = 0; c < num_cols1; c++) {
-			for (int r = 0; r < num_rows1; r++) {
+void addition(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res){
+  if ((row1 != row2) || (col1 != col2))
+      printf("Matrices dimension missmatch\n");
+  else {
+		for (int c = 0; c < col1; c++) {
+			for (int r = 0; r < row1; r++) {
 				res[r][c] = M1[r][c]+M1[r][c];
 			}
 		}
@@ -56,21 +48,21 @@ void addition(double complex **M1,double complex **M2,double complex **res){
 
 // matrix inversioon --- https://chi3x10.wordpress.com/2008/05/28/calculate-matrix-inversion-in-c/
 // the result is put in Y
-void inverse(double complex **A, int order, double complex **Y) {
+void inverse(long double complex **A, int order, long double complex **Y) {
     // get the determinant of a
-    //double complex det = 1.0/CalcDeterminant(A,order);        // Regular Method
-    double complex det = 1.0/determinant_impl(A,order);         // Cramer Method
-    printf("por aqui \n");
-
+    //long double complex det = 1.0/CalcDeterminant(A,order);        // Regular Method
+    long double complex det = 1.0/determinant_impl(A,order);         // Cramer Method
+    int i,j;
+ 
     // memory allocation
-    double complex *temp = new double complex [(order-1)*(order-1)];
-    double complex **minor = new double complex *[order-1];
+    long double complex *temp = new long double complex [(order-1)*(order-1)];
+    long double complex **minor = new long double complex *[order-1];
     for(int i=0;i<order-1;i++)
         minor[i] = temp+(i*(order-1));
  
-    for(int j=0;j<order;j++)
+    for(j=0;j<order;j++)
     {
-        for(int i=0;i<order;i++)
+        for(i=0;i<order;i++)
         {
             // get the co-factor (matrix) of A(j,i)
             GetMinor(A,minor,j,i,order);
@@ -80,15 +72,14 @@ void inverse(double complex **A, int order, double complex **Y) {
                 Y[i][j] = -Y[i][j];
         }
     }
-
     // release memory
-    //delete [] minor[0];
-    delete [] temp;
-    delete [] minor;
+    // delete [] minor[0];
+    // delete [] temp;
+    // delete [] minor;
 }
  
 // calculate the cofactor of element (row,col)
-int GetMinor(double complex **src, double complex **dest, int row, int col, int order) {
+int GetMinor(long double complex **src, long double complex **dest, int row, int col, int order) {
     // indicate which col and row is being copied to dest
     int colCount=0,rowCount=0;
  
@@ -110,7 +101,7 @@ int GetMinor(double complex **src, double complex **dest, int row, int col, int 
 }
 
 // Calculate the determinant recursively.
-double complex CalcDeterminant( double complex **mat, int order) {
+long double complex CalcDeterminant( long double complex **mat, int order) {
     // order must be >= 0
     // stop the recursion when matrix is a single element
     if(order > 10)
@@ -119,13 +110,13 @@ double complex CalcDeterminant( double complex **mat, int order) {
         return mat[0][0];
  
     // the determinant value
-    double complex det = 0.0 + 0.0*I;
+    long double complex det = 0.0 + 0.0*I;
  
     // allocate the cofactor matrix
-    double complex **minor;
-    minor = new double complex *[order-1];
+    long double complex **minor;
+    minor = new long double complex *[order-1];
     for(int i=0;i<order-1;i++)
-        minor[i] = new double complex [order-1];
+        minor[i] = new long double complex [order-1];
  
     for(int i = 0; i < order; i++ ) {
         // get minor of element (0,i)
@@ -191,12 +182,12 @@ void fft_impl(double data[], int nn, int isign)
 }
 
 // Calculate the determinant recursively.
-long double complex determinant_impl( double complex **mat, int order) {
+long double complex determinant_impl( long double complex **mat, int order) {
 
-    double complex **SubMatrix = new double complex*[order-1];
+    long double complex **SubMatrix = new long double complex*[order-1];
     long double complex det;
     for (int i = 0; i < order; i++) {
-        SubMatrix[i] = new double complex[order-1];
+        SubMatrix[i] = new long double complex[order-1];
     }
     if( order == 1 ){
         det = mat[0][0];

@@ -14,12 +14,12 @@
 #define P2 34
 #define P3 48
 
-void hermitian(double complex **M,double complex **res);
-void multiply(double complex **M1,double complex **M2,double complex **res);
-void identity(double complex **Identity,int size,double scalar);
-void addition(double complex **M1,double complex **M2,double complex **res);
-void inverse(double complex **A, int order, double complex **Y);
-int GetMinor(double complex **src, double complex **dest, int row, int col, int order);
-double complex CalcDeterminant( double complex **mat, int order);
+void hermitian(long double complex **M, int row, int col, long double complex **res);
+void multiply(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res);
+void identity(long double complex **Identity, int size, double scalar);
+void addition(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res);
+void inverse(long double complex **A, int order, long double complex **Y);
+int GetMinor(long double complex **src, long double complex **dest, int row, int col, int order);
+long double complex CalcDeterminant( long double complex **mat, int order);
 void fft_impl(double data[], int nn, int isign);
-long double complex determinant_impl( double complex **mat, int order);
+long double complex determinant_impl( long double complex **mat, int order);

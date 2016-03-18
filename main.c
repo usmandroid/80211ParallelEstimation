@@ -1,21 +1,24 @@
+#include <time.h>
 #include "inputs.h"
 #include "utils.h"
 
-void WiFi_channel_estimation_LT_LS(double complex tx_pre[], double complex rx_pre[],double complex H_EST[]);
-void WiFi_channel_estimation_PS_Linear(double complex tx_symbols[], double complex rx_symbols[],double complex H_EST[]);
-void WiFi_channel_estimation_PS_Cubic(double complex tx_symbols[], double complex rx_symbols[],double complex H_EST[]);
-void WiFi_channel_estimation_PS_Sinc(double complex tx_symbols[], double complex rx_symbols[],double complex H_EST[]);
-void WiFi_channel_estimation_PS_MMSE(double complex tx_symbols[], double complex rx_symbols[], double complex **F, double ow2, double complex H_EST[]);
+void WiFi_channel_estimation_LT_LS(long double complex tx_pre[], long double complex rx_pre[],long double complex H_EST[]);
+void WiFi_channel_estimation_PS_Linear(long double complex tx_symbols[], long double complex rx_symbols[],long double complex H_EST[]);
+void WiFi_channel_estimation_PS_Cubic(long double complex tx_symbols[], long double complex rx_symbols[],long double complex H_EST[]);
+void WiFi_channel_estimation_PS_Sinc(long double complex tx_symbols[], long double complex rx_symbols[],long double complex H_EST[]);
+void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long double complex rx_symbols[], long double complex **F, double ow2, long double complex H_EST_LS[], long double complex H_EST[]);
 
 int main(void) {
 
-	double complex tx_symb_vec[SAMPUTIL],rx_symb_vec[SAMPUTIL];
-	double complex H_EST_LT_LS[SAMPUTIL],H_EST_PS_Linear[SAMPUTIL],H_EST_PS_Cubic[SAMPUTIL];
-	double complex H_EST_PS_MMSE[SAMPUTIL];
+	clock_t start, stop;
+	long double complex tx_symb_vec[SAMPUTIL],rx_symb_vec[SAMPUTIL];
+	long double complex H_EST_LT_LS[SAMPUTIL],H_EST_PS_Linear[SAMPUTIL],H_EST_PS_Cubic[SAMPUTIL];
+	long double complex H_EST_PS_MMSE[SAMPUTIL];
+	int OFDM_block = 0;
 
-	double complex **Fmatrix = new double complex*[SAMPUTIL];
+	long double complex **Fmatrix = new long double complex*[SAMPUTIL];
 	for (int i = 0; i < SAMPUTIL; i++) {
-		Fmatrix[i] = new double complex[SAMPUTIL];
+		Fmatrix[i] = new long double complex[SAMPUTIL];
 	}
 	for (int f=0; f<SAMPUTIL; f++){
         for (int t=0; t<SAMPUTIL; t++){
@@ -25,28 +28,29 @@ int main(void) {
 
 	WiFi_channel_estimation_LT_LS(tx_preamble_fft,rx_preamble_fft,H_EST_LT_LS); 
 
-	/*
-	for(int c=0 ; c<OFDMBLK ; c++){
-		for(int r=0 ; r<SAMPUTIL ; r++){
-			tx_symb_vec[r] = tx_symb[SAMPUTIL*c + r];
-			rx_symb_vec[r] = rx_symb[SAMPUTIL*c + r];
-		}
-		WiFi_channel_estimation_PS_Linear(tx_symb_vec,rx_symb_vec,H_EST_PS_Linear);
-		WiFi_channel_estimation_PS_Cubic(tx_symb_vec,rx_symb_vec,H_EST_PS_Cubic);
-		WiFi_channel_estimation_PS_Sinc(tx_symb_vec,rx_symb_vec,H_EST_PS_Cubic);
-		WiFi_channel_estimation_PS_MMSE(tx_symb_vec,rx_symb_vec,Fmatrix,OW2,H_EST_LT_LS);
-	}*/
+	printf("-- Processing Block %d\n",OFDM_block);
 	for(int r=0 ; r<SAMPUTIL ; r++){
-		tx_symb_vec[r] = tx_symb[r];
-		rx_symb_vec[r] = rx_symb[r];
+		tx_symb_vec[r] = tx_symb[SAMPUTIL*OFDM_block + r];
+		rx_symb_vec[r] = rx_symb[SAMPUTIL*OFDM_block + r];
 	}
-	WiFi_channel_estimation_PS_MMSE(tx_symb_vec,rx_symb_vec,Fmatrix,OW2,H_EST_LT_LS);
-    
+	printf("Processing PS Linear Interpolation...\n"); start = clock();
+	WiFi_channel_estimation_PS_Linear(tx_symb_vec,rx_symb_vec,H_EST_PS_Linear); stop = clock();
+	printf("Elapsed time: %f\n",(double) (stop - start) / CLOCKS_PER_SEC);
+	printf("Processing PS Cubic Interpolation...\n"); start = clock();
+	WiFi_channel_estimation_PS_Cubic(tx_symb_vec,rx_symb_vec,H_EST_PS_Cubic); stop = clock();
+	printf("Elapsed time: %f\n",(double) (stop - start) / CLOCKS_PER_SEC);
+	printf("Processing PS Sinc Interpolation...\n"); start = clock();
+	WiFi_channel_estimation_PS_Sinc(tx_symb_vec,rx_symb_vec,H_EST_PS_Cubic); stop = clock();
+	printf("Elapsed time: %f\n",(double) (stop - start) / CLOCKS_PER_SEC);
+	printf("Processing PS MMSE...\n"); start = clock();
+	WiFi_channel_estimation_PS_MMSE(tx_symb_vec,rx_symb_vec,Fmatrix,OW2,H_EST_LT_LS,H_EST_PS_MMSE); stop = clock();
+	printf("Elapsed time: %f\n",(double) (stop - start) / CLOCKS_PER_SEC);
+	
 	return 0;
 }
 
-void WiFi_channel_estimation_LT_LS(double complex tx_pre[], double complex rx_pre[],double complex H_EST[]){
-	double complex conj1, conj2;
+void WiFi_channel_estimation_LT_LS(long double complex tx_pre[], long double complex rx_pre[],long double complex H_EST[]){
+	long double complex conj1, conj2;
 	for(int i=0 ; i<26 ; i++){
 		conj1 = creal(tx_pre[i]) - cimag(tx_pre[i]);
 		conj2 = creal(tx_pre[i+27]) - cimag(tx_pre[i+27]);
@@ -56,10 +60,10 @@ void WiFi_channel_estimation_LT_LS(double complex tx_pre[], double complex rx_pr
 	H_EST[26] = 0.0;
 }
 
-void WiFi_channel_estimation_PS_Linear(double complex tx_symbols[], double complex rx_symbols[],double complex H_EST[]){
-	double complex H_PILOTS[4];
-	double complex tx_pilots[4] = {tx_symbols[6],tx_symbols[20],tx_symbols[34],tx_symbols[48]};
-	double complex rx_pilots[4] = {rx_symbols[6],rx_symbols[20],rx_symbols[34],rx_symbols[48]};
+void WiFi_channel_estimation_PS_Linear(long double complex tx_symbols[], long double complex rx_symbols[],long double complex H_EST[]){
+	long double complex H_PILOTS[4];
+	long double complex tx_pilots[4] = {tx_symbols[6],tx_symbols[20],tx_symbols[34],tx_symbols[48]};
+	long double complex rx_pilots[4] = {rx_symbols[6],rx_symbols[20],rx_symbols[34],rx_symbols[48]};
 	int alpha, delta = P1 - P0;
 	for(int i=0 ; i<4 ; i++){
 		H_PILOTS[i] = rx_pilots[i] / tx_pilots[i];
@@ -78,10 +82,11 @@ void WiFi_channel_estimation_PS_Linear(double complex tx_symbols[], double compl
 	}
 }
 
-void WiFi_channel_estimation_PS_Cubic(double complex tx_symbols[], double complex rx_symbols[],double complex H_EST[]){
-	double complex H_PILOTS[4];
-	double complex tx_pilots[4] = {tx_symbols[6],tx_symbols[20],tx_symbols[34],tx_symbols[48]};
-	double complex rx_pilots[4] = {rx_symbols[6],rx_symbols[20],rx_symbols[34],rx_symbols[48]};	double complex f0, f01, f12, f23, f012, f123, f0123;
+void WiFi_channel_estimation_PS_Cubic(long double complex tx_symbols[], long double complex rx_symbols[],long double complex H_EST[]){
+	long double complex H_PILOTS[4];
+	long double complex tx_pilots[4] = {tx_symbols[6],tx_symbols[20],tx_symbols[34],tx_symbols[48]};
+	long double complex rx_pilots[4] = {rx_symbols[6],rx_symbols[20],rx_symbols[34],rx_symbols[48]};
+	long double complex f0, f01, f12, f23, f012, f123, f0123;
 	int alpha, delta = P1 - P0;
 	for(int i=0 ; i<4 ; i++){
 		H_PILOTS[i] = rx_pilots[i] / tx_pilots[i];
@@ -98,10 +103,10 @@ void WiFi_channel_estimation_PS_Cubic(double complex tx_symbols[], double comple
     }
 }
 
-void WiFi_channel_estimation_PS_Sinc(double complex tx_symbols[], double complex rx_symbols[],double complex H_EST[]){
-	double complex H_PILOTS[4],sinc1[SAMPUTIL],sinc2[SAMPUTIL],sinc3[SAMPUTIL],sinc4[SAMPUTIL];
-	double complex tx_pilots[4] = {tx_symbols[6],tx_symbols[20],tx_symbols[34],tx_symbols[48]};
-	double complex rx_pilots[4] = {rx_symbols[6],rx_symbols[20],rx_symbols[34],rx_symbols[48]};	double complex f0, f01, f12, f23, f012, f123, f0123;
+void WiFi_channel_estimation_PS_Sinc(long double complex tx_symbols[], long double complex rx_symbols[],long double complex H_EST[]){
+	long double complex H_PILOTS[4],sinc1[SAMPUTIL],sinc2[SAMPUTIL],sinc3[SAMPUTIL],sinc4[SAMPUTIL];
+	long double complex tx_pilots[4] = {tx_symbols[6],tx_symbols[20],tx_symbols[34],tx_symbols[48]};
+	long double complex rx_pilots[4] = {rx_symbols[6],rx_symbols[20],rx_symbols[34],rx_symbols[48]};
 	int alpha, delta = P1 - P0;
 	for(int k=0 ; k<SAMPUTIL ; k++){
 		sinc1[k] = H_PILOTS[0]*(sin(PI*(k-P0) / delta)/(PI*(k-P0) / delta));
@@ -113,38 +118,39 @@ void WiFi_channel_estimation_PS_Sinc(double complex tx_symbols[], double complex
     }
 }
 
-void WiFi_channel_estimation_PS_MMSE(double complex tx_symbols[], double complex rx_symbols[], double complex **F, double ow2, double complex H_EST[]){	
-	double complex **FHermitian = new double complex*[SAMPUTIL];
-	double complex **X4Hermitian = new double complex*[SAMPUTIL];
-	double complex **X4 = new double complex*[SAMPUTIL];
-	double complex **Rhh = new double complex*[SAMPUTIL];
-	double complex **Rhy = new double complex*[SAMPUTIL];
-	double complex **Ryy = new double complex*[SAMPUTIL];
-	double complex **invRyy = new double complex*[SAMPUTIL];
-	double complex **invF = new double complex*[SAMPUTIL];
-	double complex **temp1 = new double complex*[SAMPUTIL];
-	double complex **temp2 = new double complex*[SAMPUTIL];
-	double complex **Id = new double complex*[SAMPUTIL];
-	double complex **temp3 = new double complex*[SAMPUTIL];
-	double complex **rx_symbols1 = new double complex*[SAMPUTIL];
-	double complex **H_EST1 = new double complex*[SAMPUTIL];
-	rx_symbols1[0] = new double complex[1];
-	H_EST1[0] = new double complex[1];
+void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long double complex rx_symbols[], long double complex **F, double ow2, long double complex H_EST_LS[], long double complex H_EST_MMSE[]){
+	long double complex **FHermitian = new long double complex*[SAMPUTIL];
+	long double complex **X4Hermitian = new long double complex*[SAMPUTIL];
+	long double complex **X4 = new long double complex*[SAMPUTIL];
+	long double complex **Rhh = new long double complex*[SAMPUTIL];
+	long double complex **Rhy = new long double complex*[SAMPUTIL];
+	long double complex **Ryy = new long double complex*[SAMPUTIL];
+	long double complex **invRyy = new long double complex*[SAMPUTIL];
+	long double complex **invF = new long double complex*[SAMPUTIL];
+	long double complex **temp1 = new long double complex*[SAMPUTIL];
+	long double complex **temp2 = new long double complex*[SAMPUTIL];
+	long double complex **temp3 = new long double complex*[SAMPUTIL];
+	long double complex **Id = new long double complex*[SAMPUTIL];
+	long double complex **rx_symbols1 = new long double complex*[SAMPUTIL];
+	long double complex **H_EST1 = new long double complex*[SAMPUTIL];
 
 	for (int i = 0; i < SAMPUTIL; i++) {
-		FHermitian[i] = new double complex[SAMPUTIL];
-		X4Hermitian[i] = new double complex[SAMPUTIL];
-		X4[i] = new double complex[SAMPUTIL];
-		Rhh[i] = new double complex[SAMPUTIL];
-		Rhy[i] = new double complex[SAMPUTIL];
-		Ryy[i] = new double complex[SAMPUTIL];
-		invRyy[i] = new double complex[SAMPUTIL];
-		invF[i] = new double complex[SAMPUTIL];
-		temp1[i] = new double complex[SAMPUTIL];
-		temp2[i] = new double complex[SAMPUTIL];
-		temp3[i] = new double complex[SAMPUTIL];
-		Id[i] = new double complex[SAMPUTIL];
-		rx_symbols1[i] = new double complex[1];
+		/* MATRICES */
+		FHermitian[i] = new long double complex[SAMPUTIL];
+		X4Hermitian[i] = new long double complex[SAMPUTIL];
+		X4[i] = new long double complex[SAMPUTIL];
+		Rhh[i] = new long double complex[SAMPUTIL];
+		Rhy[i] = new long double complex[SAMPUTIL];
+		Ryy[i] = new long double complex[SAMPUTIL];
+		invRyy[i] = new long double complex[SAMPUTIL];
+		invF[i] = new long double complex[SAMPUTIL];
+		temp1[i] = new long double complex[SAMPUTIL];
+		temp2[i] = new long double complex[SAMPUTIL];
+		temp3[i] = new long double complex[SAMPUTIL];
+		Id[i] = new long double complex[SAMPUTIL];
+		/* VECTORS */ 
+		rx_symbols1[i] = new long double complex[1];
+		H_EST1[i] = new long double complex[1];
 	}
 
 	for(int i=0 ; i<SAMPUTIL; i++){
@@ -166,43 +172,54 @@ void WiFi_channel_estimation_PS_MMSE(double complex tx_symbols[], double complex
 		}
 	}
 
-	hermitian(F,FHermitian);
-	hermitian(X4,X4Hermitian);
-
-	
-	int size = 55;
-	double complex **Matrix = new double complex*[size];
-	double complex **invMatrix = new double complex*[size];
+/*
+	int size = 54;
+	long double complex **Matrix = new long double complex*[size];
+	long double complex **invMatrix = new long double complex*[size];
+	long double complex **resMatrix = new long double complex*[size];
 	for(int i=0 ; i<size ; i++){
-		Matrix[i] = new double complex[size];
-		invMatrix[i] = new double complex[size];
+		Matrix[i] = new long double complex[size];
+		invMatrix[i] = new long double complex[size];
+		resMatrix[i] = new long double complex[size];
 		for(int j=0 ; j<size ; j++){
 			Matrix[i][j] = ((int) rand()%20) + I*((int) rand()%20);
 		}
 	}
 	double complex det = (double complex) determinant_impl(Matrix,size);
-	printf("%lf + i%lf\n", creal(det), cimag(det));	
+	//printf("%lf + i%lf\n", creal(det), cimag(det));	
 
-	inverse(Matrix,size,invMatrix);		//invF
-//	inverse(F,SAMPUTIL,invF);			//invF
-//	multiply(invF,H_EST1,temp1);		//temp1 = invF*H_EST
-/*	hermitian(temp1,temp2);				//temp2 = (invF*H_EST)'
-	multiply(temp1,temp2,Rhh);			//temp1 = invF*H_EST
+	inverse(Matrix,size,invMatrix);											//invMatrix
+	multiply(Matrix,size,size,Matrix,size,size,resMatrix);
+*/
 
-	multiply(Rhh,FHermitian,temp1);		//temp1 = Rhh*F'
-	multiply(temp1,X4,Rhy);				//Rhy
+	for(int r=0 ; r<SAMPUTIL ; r++)
+		H_EST1[r][0] = H_EST_LS[r];
 
-	multiply(temp1,X4Hermitian,temp2);	//temp2 = Rhh*F'*X4'
-	multiply(F,temp1,temp1);  			//temp1 = F*Rhh*F'*X4'
-	multiply(X4,temp1,temp2);			//temp2 = X4*F*Rhh*F'*X4'
+	hermitian(F,SAMPUTIL,SAMPUTIL,FHermitian);								// FHermitian = F'
+	hermitian(X4,SAMPUTIL,SAMPUTIL,X4Hermitian);							//X4Hermitian = X4'
+
+	inverse(F,SAMPUTIL,invF);												//invF
+	multiply(invF,SAMPUTIL,SAMPUTIL,H_EST1,SAMPUTIL,1,temp1);				//temp1 = invF*H_EST
+	hermitian(temp1,SAMPUTIL,SAMPUTIL,temp2);								//temp2 = (invF*H_EST)'
+	multiply(temp1,SAMPUTIL,SAMPUTIL,temp2,SAMPUTIL,SAMPUTIL,Rhh);			//Rhh = (invF*H_EST)*(invF*H_EST)'
+
+	multiply(Rhh,SAMPUTIL,SAMPUTIL,FHermitian,SAMPUTIL,SAMPUTIL,temp1);		//temp1 = Rhh*F'
+	multiply(temp1,SAMPUTIL,SAMPUTIL,X4,SAMPUTIL,SAMPUTIL,Rhy);				//Rhy
+
+	multiply(temp1,SAMPUTIL,SAMPUTIL,X4Hermitian,SAMPUTIL,SAMPUTIL,temp2);	//temp2 = Rhh*F'*X4'
+	multiply(F,SAMPUTIL,SAMPUTIL,temp1,SAMPUTIL,SAMPUTIL,temp1);  			//temp1 = F*Rhh*F'*X4'
+	multiply(X4,SAMPUTIL,SAMPUTIL,temp1,SAMPUTIL,SAMPUTIL,temp2);			//temp2 = X4*F*Rhh*F'*X4'
 
 	identity(Id,SAMPUTIL,ow2);
-	addition(Id,temp2,Ryy);				//Ryy
-	inverse(Ryy,SAMPUTIL,invRyy);		//invRyy
+	addition(Id,SAMPUTIL,SAMPUTIL,temp2,SAMPUTIL,SAMPUTIL,Ryy);				//Ryy
+	inverse(Ryy,SAMPUTIL,invRyy);											//invRyy
 
-	multiply(F,Rhy,temp1);				//temp1 = F*Rhy
-	multiply(invRyy,rx_symbols1,temp3);	//temp2 = invRyy*rx_symbols
-	multiply(temp1,temp3,H_EST1);		//H_EST = F*Rhy*invRyy*rx_symbols*/
+	multiply(F,SAMPUTIL,SAMPUTIL,Rhy,SAMPUTIL,SAMPUTIL,temp1);				//temp1 = F*Rhy
+	multiply(invRyy,SAMPUTIL,SAMPUTIL,rx_symbols1,SAMPUTIL,1,temp3);		//temp3 = invRyy*rx_symbols
+	multiply(temp1,SAMPUTIL,SAMPUTIL,temp3,SAMPUTIL,1,temp2);				//H_EST = F*Rhy*invRyy*rx_symbols
+
+	for(int r=0 ; r<SAMPUTIL ; r++)
+		H_EST_MMSE[r] = temp2[r][0];
 
 	free(FHermitian);free(X4Hermitian);free(X4);free(Rhh);free(Rhy);free(Ryy);free(invRyy);
 	free(invF);free(temp1);free(temp2);free(Id);free(temp3);free(rx_symbols1);free(H_EST1);
