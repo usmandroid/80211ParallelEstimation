@@ -6,21 +6,79 @@ void hermitian(long double complex **M, int row, int col, long double complex **
 			res[c][r] = creal(M[r][c]) - cimag(M[r][c]);
 }
 
+void hermitian_omp(long double complex **M, int row, int col, long double complex **res){
+    #pragma omp parallel for num_threads(row)
+    for (int r = 0; r < row; r++)
+        for(int c = 0 ; c < col ; c++ )
+            res[c][r] = creal(M[r][c]) - cimag(M[r][c]);
+}
+
 void multiply(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res){
+    long double complex sum = 0;
+    if (col1 != row2)
+        printf("Matrices dimension missmatch\n");
+    else {
+        for (int c = 0; c < row1; c++) {
+            for (int d = 0; d < col2; d++) {
+                for (int k = 0; k < row2; k++){
+                    sum = sum + M1[c][k]*M2[k][d];
+                }        
+                res[c][d] = sum;
+                sum = 0;
+            }
+        }
+    }
+}
+
+void multiply_omp(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res){
 	long double complex sum = 0;
+    int c, d, k;
 	if (col1 != row2)
 		printf("Matrices dimension missmatch\n");
 	else {
-		for (int c = 0; c < row1; c++) {
-			for (int d = 0; d < col2; d++) {
-				for (int k = 0; k < row2; k++){
-					sum = sum + M1[c][k]*M2[k][d];
-                }        
-				res[c][d] = sum;
-				sum = 0;
-			}
-		}
-	}
+        #pragma omp parallel shared(res) private(sum,c,d,k) 
+        {
+            #pragma omp for schedule(static)
+    		for (c = 0; c < row1; c++) {
+    			for (d = 0; d < col2; d++) {
+    				for (k = 0; k < row2; k++){
+    					sum = sum + M1[c][k]*M2[k][d];
+                    }        
+    				res[c][d] = sum;
+    				sum = 0;
+    			}
+    	    }
+        }
+    }
+}
+
+void multiplyVxVeqM(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res){
+    if (col1 != row2)
+        printf("Matrices dimension missmatch\n");
+    else {
+        for(int r=0; r<row1; r++){
+            for(int c=0; c<col2; c++){
+                res[r][c] = M1[r][0]*M2[0][c];
+            }
+        }
+    }
+}
+
+void multiplyVxVeqM_omp(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res){
+    int r, c;
+    if (col1 != row2)
+        printf("Matrices dimension missmatch\n");
+    else {
+        #pragma omp parallel shared(res) private(r,c) 
+        {
+            #pragma omp for schedule(static)
+            for(r=0; r<row1; r++){
+                for(c=0; c<col2; c++){
+                    res[r][c] = M1[r][0]*M2[0][c];
+                }
+            }
+        }
+    }
 }
 
 void identity(long double complex **Identity,int size,double scalar){
@@ -32,6 +90,22 @@ void identity(long double complex **Identity,int size,double scalar){
 				Identity[r][c] = 0.0;
 		}
 	}
+}
+
+void identity_omp(long double complex **Identity,int size,double scalar){
+    int r, c;
+    #pragma omp parallel shared(Identity) private(r,c) 
+    {
+        #pragma omp for schedule(static)
+        for (c = 0; c < size; c++) {
+            for (r = 0; r < size; r++) {
+                if(c==r)
+                    Identity[r][c] = scalar;
+                else
+                    Identity[r][c] = 0.0;
+            }
+        }
+    }    
 }
 
 void addition(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res){
@@ -46,12 +120,30 @@ void addition(long double complex **M1, int row1, int col1, long double complex 
 	}
 }
 
+void addition_omp(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res){
+    int r, c;
+  if ((row1 != row2) || (col1 != col2))
+      printf("Matrices dimension missmatch\n");
+  else {
+        #pragma omp parallel shared(res) private(r,c) 
+        {
+            #pragma omp for schedule(static)
+            for (c = 0; c < col1; c++) {
+                for (r = 0; r < row1; r++) {
+                    res[r][c] = M1[r][c]+M1[r][c];
+                }
+            }
+        }
+    }
+}
+
 // matrix inversioon --- https://chi3x10.wordpress.com/2008/05/28/calculate-matrix-inversion-in-c/
 // the result is put in Y
 void inverse(long double complex **A, int order, long double complex **Y) {
     // get the determinant of a
     //long double complex det = 1.0/CalcDeterminant(A,order);        // Regular Method
     long double complex det = 1.0/determinant_impl(A,order);         // Cramer Method
+	long double complex temporal;
     int i,j;
  
     // memory allocation
@@ -69,7 +161,41 @@ void inverse(long double complex **A, int order, long double complex **Y) {
             // Y[i][j] = det*CalcDeterminant(minor,order-1);      // Regular Method
             Y[i][j] = det*determinant_impl(minor,order-1);        // Cramer Method
             if( (i+j)%2 == 1)
-                Y[i][j] = -Y[i][j];
+				Y[i][j] = (-1)*Y[i][j];
+        }
+    }
+    // release memory
+    // delete [] minor[0];
+    // delete [] temp;
+    // delete [] minor;
+}
+
+// the result is put in Y
+void inverse_omp(long double complex **A, int order, long double complex **Y) {
+    // get the determinant of a
+    //long double complex det = 1.0/CalcDeterminant(A,order);        // Regular Method
+    long double complex det = 1.0/determinant_impl(A,order);         // Cramer Method
+    long double complex temporal;
+    int i,j, nThreads = order*order;
+ 
+    // memory allocation
+    long double complex *temp = new long double complex [(order-1)*(order-1)];
+    long double complex **minor = new long double complex *[order-1];
+    for(int i=0;i<order-1;i++)
+        minor[i] = temp+(i*(order-1));
+ 
+    #pragma omp parallel num_threads(order)
+    {
+        #pragma omp for schedule(static)
+        for(j=0;j<order;j++) {
+            for(i=0;i<order;i++) {
+                // get the co-factor (matrix) of A(j,i)
+                GetMinor(A,minor,j,i,order);
+                // Y[i][j] = det*CalcDeterminant(minor,order-1);      // Regular Method
+                Y[i][j] = det*determinant_impl(minor,order-1);        // Cramer Method
+                if( (i+j)%2 == 1)
+                    Y[i][j] = (-1)*Y[i][j];
+            }
         }
     }
     // release memory
@@ -80,7 +206,7 @@ void inverse(long double complex **A, int order, long double complex **Y) {
  
 // calculate the cofactor of element (row,col)
 int GetMinor(long double complex **src, long double complex **dest, int row, int col, int order) {
-    // indicate which col and row is being copied to dest
+    // Indicate which col and row is being copied to dest
     int colCount=0,rowCount=0;
  
     for(int i = 0; i < order; i++ ) {
@@ -203,4 +329,57 @@ long double complex determinant_impl( long double complex **mat, int order) {
     }
 
     return det;
+}
+
+// Calculate the determinant recursively.
+long double complex determinant_impl_omp( long double complex **mat, int order) {
+
+    long double complex **SubMatrix = new long double complex*[order-1];
+    long double complex det;
+    int i, j;
+
+    for (int i = 0; i < order; i++) {
+        SubMatrix[i] = new long double complex[order-1];
+    }
+
+    if( order == 1 )
+        det = mat[0][0];
+    else if(order == 2)
+        det = mat[0][0]*mat[1][1] - mat[0][1]*mat[1][0];
+    else{
+        #pragma omp parallel shared(SubMatrix) private(i,j) 
+        {
+            #pragma omp for schedule(static)
+            for(i=1 ; i<order ; i++){
+                for(j=1 ; j<order ; j++){
+                    SubMatrix[i-1][j-1] = mat[i][j] - (mat[i][0] * mat[0][j] / mat[0][0]);
+                }
+            }
+        }
+        det = mat[0][0]*determinant_impl(SubMatrix,order-1);
+    }
+
+    return det;
+}
+
+
+void printVect(long double complex *vec, int size,char *name){
+	for(int k=0 ; k<size ; k++){
+        printf("%s[%d] = %lf + i%lf \n",name,k,creal(vec[k]),cimag(vec[k]));
+    }
+}
+
+void printMatrix(long double complex **mat, int rows, int cols, char *name){
+    for(int c=0 ; c<cols ; c++)
+        for(int r=0 ; r<rows ; r++) {
+            printf("%s[%d][%d] = %lf + i%lf \n",name,r,c,creal(mat[r][c]),cimag(mat[r][c]));
+        }
+}
+
+double sinc(double input ){
+    if(input != 0){
+        return sin(PI*input)/(PI*input);
+    } else {
+        return 1;
+    }
 }

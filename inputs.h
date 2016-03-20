@@ -8,16 +8,16 @@
 #define SIZESYMBOL 53*15
 #define SAMPUTIL 53
 #define OFDMBLK 15
-#define P0 6
-#define P1 20
-#define P2 34
-#define P3 48
+#define P0 5
+#define P1 19
+#define P2 33
+#define P3 47
 
 using namespace std;
 
 double OW2 = 9.6172e-08;
 
-double complex tx_preamble_fft[53] = {
+long double complex tx_preamble_fft[53] = {
    8.8752 - 0.0000*I,
    8.8755 - 0.0000*I,
   -8.8752 + 0.0000*I,
@@ -72,7 +72,7 @@ double complex tx_preamble_fft[53] = {
    8.8748 + 0.0000*I,
    8.8753 - 0.0000*I
 };
-double complex rx_preamble_fft[53] = {
+long double complex rx_preamble_fft[53] = {
    0.0802 + 0.0082*I,
    0.0827 + 0.0066*I,
   -0.0849 - 0.0052*I,
@@ -127,7 +127,7 @@ double complex rx_preamble_fft[53] = {
   -0.0055 - 0.1084*I,
   -0.0089 - 0.1055*I
 };
-double complex tx_symb[SIZESYMBOL] = {
+long double complex tx_symb[SIZESYMBOL] = {
    8.8746 + 0.0000*I,
    8.8751 + 0.0000*I,
    8.8757 + 0.0000*I,
@@ -925,7 +925,7 @@ double complex tx_symb[SIZESYMBOL] = {
   -8.8753 - 0.0000*I
 };
 
-double complex rx_symb[SIZESYMBOL] = {
+long double complex rx_symb[SIZESYMBOL] = {
    0.0819 + 0.0044*I,
    0.0837 + 0.0027*I,
    0.0859 + 0.0017*I,
