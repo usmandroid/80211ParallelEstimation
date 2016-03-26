@@ -28,4 +28,3 @@ function [ H_EST_MMSE_PILOT_AV ] = WiFi_channel_estimation_PS_MMSE(tx,rx,ow2,H_E
     end
     H_EST_MMSE_PILOT_AV = ( H_EST_MMSE_PILOT(:,1)+H_EST_MMSE_PILOT(:,2)+H_EST_MMSE_PILOT(:,3)+H_EST_MMSE_PILOT(:,4) )./4;
 end
-

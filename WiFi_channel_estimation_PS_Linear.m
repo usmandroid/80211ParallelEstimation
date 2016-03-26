@@ -5,10 +5,7 @@ function [ H_EST ] = WiFi_channel_estimation_PS_Linear(tx,rx,sampUtil,no_OFDM_bl
         tx_pilots = [tx(6,i);tx(20,i);tx(34,i);tx(48,i)];
         H_PILOTS = rx_pilots./tx_pilots;
         for k = 1:sampUtil
-            if(k<6)
-                alpha = (k-6)/(20-6);
-                H_EST(k,i) = H_PILOTS(1)+( (H_PILOTS(2)-H_PILOTS(1) )*alpha );
-            elseif ((k>=6) && (k<20))
+            if (k<20)
                 alpha = (k-6)/(20-6);
                 H_EST(k,i) = H_PILOTS(1)+( (H_PILOTS(2)-H_PILOTS(1) )*alpha );
             elseif ((k>=20) && (k<34))
