@@ -65,6 +65,9 @@ int main(void) {
 	// printVect(H_EST_PS_Cubic,SAMPUTIL,"H_EST_PS_Cubic");
 	// printVect(H_EST_PS_Sinc,SAMPUTIL,"H_EST_PS_Sinc");
 	// printVect(H_EST_PS_MMSE,SAMPUTIL,"H_EST_PS_MMSE");
+
+	free(Fmatrix);
+	
 	return 0;
 }
 

@@ -166,8 +166,10 @@ void inverse(long double complex **A, int order, long double complex **Y) {
     }
     // release memory
     // delete [] minor[0];
-    // delete [] temp;
-    // delete [] minor;
+    delete [] temp;
+    delete [] minor;
+
+    //free(temp); free(minor);
 }
 
 // the result is put in Y
@@ -200,8 +202,10 @@ void inverse_omp(long double complex **A, int order, long double complex **Y) {
     }
     // release memory
     // delete [] minor[0];
-    // delete [] temp;
-    // delete [] minor;
+    delete [] temp;
+    delete [] minor;
+
+    // free(temp); free(minor);
 }
  
 // calculate the cofactor of element (row,col)
@@ -222,7 +226,7 @@ int GetMinor(long double complex **src, long double complex **dest, int row, int
             rowCount++;
         }
     }
- 
+
     return 1;
 }
 
@@ -312,7 +316,7 @@ long double complex determinant_impl( long double complex **mat, int order) {
 
     long double complex **SubMatrix = new long double complex*[order-1];
     long double complex det;
-    for (int i = 0; i < order; i++) {
+    for (int i = 0; i < order-1; i++) {
         SubMatrix[i] = new long double complex[order-1];
     }
     if( order == 1 ){
@@ -328,6 +332,11 @@ long double complex determinant_impl( long double complex **mat, int order) {
         det = mat[0][0]*determinant_impl(SubMatrix,order-1);
     }
 
+    // release memory
+    for(int i=0;i<order-1;i++)
+        delete [] SubMatrix[i];
+    delete [] SubMatrix;
+
     return det;
 }
 
@@ -338,7 +347,7 @@ long double complex determinant_impl_omp( long double complex **mat, int order) 
     long double complex det;
     int i, j;
 
-    for (int i = 0; i < order; i++) {
+    for (int i = 0; i < order-1; i++) {
         SubMatrix[i] = new long double complex[order-1];
     }
 
@@ -358,6 +367,11 @@ long double complex determinant_impl_omp( long double complex **mat, int order) 
         }
         det = mat[0][0]*determinant_impl(SubMatrix,order-1);
     }
+
+    // release memory
+    for(int i=0;i<order-1;i++)
+        delete [] SubMatrix[i];
+    delete [] SubMatrix;
 
     return det;
 }
