@@ -179,6 +179,9 @@ void WiFi_channel_estimation_PS_Sinc(long double complex tx_symbols[], long doub
 }
 
 void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long double complex rx_symbols[], long double complex **F, double ow2, long double complex H_EST_LS[], long double complex H_EST_MMSE[]){
+
+	clock_t start, stop, start_tot;
+
 	long double complex **FHermitian = new long double complex*[SAMPUTIL];
 	long double complex **X4Hermitian = new long double complex*[SAMPUTIL];
 	long double complex **X4 = new long double complex*[SAMPUTIL];
@@ -259,13 +262,21 @@ void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long doub
 	for(int r=0 ; r<SAMPUTIL ; r++)
 		H_EST1[r][0] = H_EST_LS[r];
 
+		start = clock();
 	hermitian_omp(F,SAMPUTIL,SAMPUTIL,FHermitian);								// FHermitian = F'
+		stop = clock(); printf("HERMITIAN Elapsed Time = %f\n",(double) (stop - start));
 	hermitian_omp(X4,SAMPUTIL,SAMPUTIL,X4Hermitian);							//X4Hermitian = X4'
 
-	inverse_omp(F,SAMPUTIL,invF);												//invF
+		start = clock();
+	inverse_omp2(F,SAMPUTIL,invF);												//invF
+		stop = clock(); printf("INVERSE 1 Elapsed Time = %f\n",(double) (stop - start));
+		start = clock();
 	multiply_omp(invF,SAMPUTIL,SAMPUTIL,H_EST1,SAMPUTIL,1,temp1);				//temp1 = invF*H_EST
+		stop = clock(); printf("MULTIPLY Elapsed Time = %f\n",(double) (stop - start));
 	hermitian_omp(temp1,SAMPUTIL,SAMPUTIL,temp2);								//temp2 = (invF*H_EST)'
+		start = clock();
 	multiplyVxVeqM_omp(temp1,SAMPUTIL,SAMPUTIL,temp2,SAMPUTIL,SAMPUTIL,Rhh);	//Rhh = (invF*H_EST)*(invF*H_EST)'
+		stop = clock(); printf("MULTIPLYVxVeqM Elapsed Time = %f\n",(double) (stop - start));
 
 	multiply_omp(Rhh,SAMPUTIL,SAMPUTIL,FHermitian,SAMPUTIL,SAMPUTIL,temp1);		//temp1 = Rhh*F'
 	multiply_omp(temp1,SAMPUTIL,SAMPUTIL,X4,SAMPUTIL,SAMPUTIL,Rhy);				//Rhy
@@ -275,9 +286,13 @@ void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long doub
 	multiply_omp(X4,SAMPUTIL,SAMPUTIL,temp1,SAMPUTIL,SAMPUTIL,temp2);			//temp2 = X4*F*Rhh*F'*X4'
 
 	identity_omp(Id,SAMPUTIL,ow2);
+		start = clock();
 	addition_omp(Id,SAMPUTIL,SAMPUTIL,temp2,SAMPUTIL,SAMPUTIL,Ryy);				//Ryy
+		stop = clock(); printf("ADDITION Elapsed Time = %f\n",(double) (stop - start));
 
-	inverse_omp(Ryy,SAMPUTIL,invRyy);											//invRyy
+		start = clock();
+	inverse_omp2(Ryy,SAMPUTIL,invRyy);											//invRyy
+		stop = clock(); printf("INVERSE 2 Elapsed Time = %f\n",(double) (stop - start));
 
  	multiply_omp(F,SAMPUTIL,SAMPUTIL,Rhy,SAMPUTIL,SAMPUTIL,temp1);				//temp1 = F*Rhy
 	multiply_omp(invRyy,SAMPUTIL,SAMPUTIL,rx_symbols1,SAMPUTIL,1,temp3);		//temp3 = invRyy*rx_symbols

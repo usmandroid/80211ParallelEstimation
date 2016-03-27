@@ -164,12 +164,10 @@ void inverse(long double complex **A, int order, long double complex **Y) {
 				Y[i][j] = (-1)*Y[i][j];
         }
     }
+
     // release memory
-    // delete [] minor[0];
     delete [] temp;
     delete [] minor;
-
-    //free(temp); free(minor);
 }
 
 // the result is put in Y
@@ -193,21 +191,19 @@ void inverse_omp(long double complex **A, int order, long double complex **Y) {
             for(i=0;i<order;i++) {
                 // get the co-factor (matrix) of A(j,i)
                 GetMinor(A,minor,j,i,order);
-                // Y[i][j] = det*CalcDeterminant(minor,order-1);      // Regular Method
-                Y[i][j] = det*determinant_impl(minor,order-1);        // Cramer Method
+                // Y[i][j] = det*CalcDeterminant(minor,order-1);      // Regular Method seq
+                Y[i][j] = det*determinant_impl(minor,order-1);        // Cramer Method seq
                 if( (i+j)%2 == 1)
                     Y[i][j] = (-1)*Y[i][j];
             }
         }
     }
+
     // release memory
-    // delete [] minor[0];
     delete [] temp;
     delete [] minor;
-
-    // free(temp); free(minor);
 }
- 
+
 // calculate the cofactor of element (row,col)
 int GetMinor(long double complex **src, long double complex **dest, int row, int col, int order) {
     // Indicate which col and row is being copied to dest
@@ -327,42 +323,6 @@ long double complex determinant_impl( long double complex **mat, int order) {
         for(int i=1 ; i<order ; i++){
             for(int j=1 ; j<order ; j++){
                 SubMatrix[i-1][j-1] = mat[i][j] - (mat[i][0] * mat[0][j] / mat[0][0]);
-            }
-        }
-        det = mat[0][0]*determinant_impl(SubMatrix,order-1);
-    }
-
-    // release memory
-    for(int i=0;i<order-1;i++)
-        delete [] SubMatrix[i];
-    delete [] SubMatrix;
-
-    return det;
-}
-
-// Calculate the determinant recursively.
-long double complex determinant_impl_omp( long double complex **mat, int order) {
-
-    long double complex **SubMatrix = new long double complex*[order-1];
-    long double complex det;
-    int i, j;
-
-    for (int i = 0; i < order-1; i++) {
-        SubMatrix[i] = new long double complex[order-1];
-    }
-
-    if( order == 1 )
-        det = mat[0][0];
-    else if(order == 2)
-        det = mat[0][0]*mat[1][1] - mat[0][1]*mat[1][0];
-    else{
-        #pragma omp parallel shared(SubMatrix) private(i,j) 
-        {
-            #pragma omp for schedule(static)
-            for(i=1 ; i<order ; i++){
-                for(j=1 ; j<order ; j++){
-                    SubMatrix[i-1][j-1] = mat[i][j] - (mat[i][0] * mat[0][j] / mat[0][0]);
-                }
             }
         }
         det = mat[0][0]*determinant_impl(SubMatrix,order-1);

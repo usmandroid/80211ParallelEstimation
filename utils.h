@@ -26,10 +26,12 @@ void addition(long double complex **M1, int row1, int col1, long double complex 
 void addition_omp(long double complex **M1, int row1, int col1, long double complex **M2, int row2, int col2, long double complex **res);
 void inverse(long double complex **A, int order, long double complex **Y);
 void inverse_omp(long double complex **A, int order, long double complex **Y);
+void inverse_omp2(long double complex **A, int order, long double complex **Y);
 int GetMinor(long double complex **src, long double complex **dest, int row, int col, int order);
 long double complex CalcDeterminant( long double complex **mat, int order);
 void fft_impl(double data[], int nn, int isign);
 long double complex determinant_impl( long double complex **mat, int order);
+long double complex determinant_impl_omp( long double complex **mat, int order);
 void printVect(long double complex *vec, int size,char *name);
 void printMatrix(long double complex **mat, int rows, int cols, char *name);
 double sinc(double input);
