@@ -142,7 +142,7 @@ void addition_omp(long double complex **M1, int row1, int col1, long double comp
 void inverse(long double complex **A, int order, long double complex **Y) {
     // get the determinant of a
     //long double complex det = 1.0/CalcDeterminant(A,order);        // Regular Method
-    long double complex det = 1.0/determinant_impl(A,order);         // Cramer Method
+    long double complex det = 1.0/determinant_impl_rec(A,order);         // Cramer Method
 	long double complex temporal;
     int i,j;
  
@@ -159,7 +159,7 @@ void inverse(long double complex **A, int order, long double complex **Y) {
             // get the co-factor (matrix) of A(j,i)
             GetMinor(A,minor,j,i,order);
             // Y[i][j] = det*CalcDeterminant(minor,order-1);      // Regular Method
-            Y[i][j] = det*determinant_impl(minor,order-1);        // Cramer Method
+            Y[i][j] = det*determinant_impl_rec(minor,order-1);        // Cramer Method
             if( (i+j)%2 == 1)
 				Y[i][j] = (-1)*Y[i][j];
         }
@@ -174,28 +174,24 @@ void inverse(long double complex **A, int order, long double complex **Y) {
 void inverse_omp(long double complex **A, int order, long double complex **Y) {
     // get the determinant of a
     //long double complex det = 1.0/CalcDeterminant(A,order);        // Regular Method
-    long double complex det = 1.0/determinant_impl(A,order);         // Cramer Method
+    long double complex det = 1.0/determinant_impl_omp(A,order);         // Cramer Method
     long double complex temporal;
-    int i,j, nThreads = order*order;
+    int i,j;
  
     // memory allocation
     long double complex *temp = new long double complex [(order-1)*(order-1)];
     long double complex **minor = new long double complex *[order-1];
     for(int i=0;i<order-1;i++)
         minor[i] = temp+(i*(order-1));
- 
-    #pragma omp parallel num_threads(order)
-    {
-        #pragma omp for schedule(static)
-        for(j=0;j<order;j++) {
-            for(i=0;i<order;i++) {
-                // get the co-factor (matrix) of A(j,i)
-                GetMinor(A,minor,j,i,order);
-                // Y[i][j] = det*CalcDeterminant(minor,order-1);      // Regular Method seq
-                Y[i][j] = det*determinant_impl(minor,order-1);        // Cramer Method seq
-                if( (i+j)%2 == 1)
-                    Y[i][j] = (-1)*Y[i][j];
-            }
+
+    for(j=0;j<order;j++) {
+        for(i=0;i<order;i++) {
+            // get the co-factor (matrix) of A(j,i)
+            GetMinor(A,minor,j,i,order);
+            // Y[i][j] = det*CalcDeterminant(minor,order-1);      // Regular Method recursive seq
+            Y[i][j] = det*determinant_impl_omp(minor,order-1);    // Cramer Method recursive seq
+            if( (i+j)%2 == 1)
+                Y[i][j] = (-1)*Y[i][j];
         }
     }
 
@@ -308,7 +304,7 @@ void fft_impl(double data[], int nn, int isign)
 }
 
 // Calculate the determinant recursively.
-long double complex determinant_impl( long double complex **mat, int order) {
+long double complex determinant_impl_rec( long double complex **mat, int order) {
 
     long double complex **SubMatrix = new long double complex*[order-1];
     long double complex det;
@@ -325,7 +321,7 @@ long double complex determinant_impl( long double complex **mat, int order) {
                 SubMatrix[i-1][j-1] = mat[i][j] - (mat[i][0] * mat[0][j] / mat[0][0]);
             }
         }
-        det = mat[0][0]*determinant_impl(SubMatrix,order-1);
+        det = mat[0][0]*determinant_impl_rec(SubMatrix,order-1);
     }
 
     // release memory
@@ -336,18 +332,150 @@ long double complex determinant_impl( long double complex **mat, int order) {
     return det;
 }
 
+// Calculate the determinant sequentially.
+long double complex determinant_impl( long double complex **mat, int order) {
+    long double complex tmp_frac, det = 1;
+    int last_row;
+    int i, j, k;
+    int num_swaps;
+    bool zero_on_diag, swapped;
+
+    // default to success
+    num_swaps = 0;
+    zero_on_diag = false;
+    
+    last_row = order;
+
+    // row 0 stays unaltered
+    for (i=1; i < last_row; i++) {      // last_row = mat_size unless get an all zero row
+        for (k=0; k < i; k++) {
+            tmp_frac = mat[i][k] / mat[k][k];
+            for (j = k+1; j < order; j++) {
+                mat[i][j] = mat[i][j] - (tmp_frac * mat[k][j]);
+            }
+        }
+
+        if(mat[i][i] == 0) {
+            /* It is now possible we set a diagonal element to zero
+            so we shall do column swaps to fix this
+            If this fails then row i is all zeros, so
+            there would be a zero on the diagonal somewhere anyway,
+            and we will leave it here. */
+    
+            j = i+1; // all cols left of col[i] will have zeros in row[i]
+            swapped = false;
+            while ((!swapped) && (j < order)) {
+                if ( mat[i][j]!=0 ) {
+                    swap_cols(mat, order, i, j);
+                    swapped = true;
+                    num_swaps++;
+                }
+                j++;
+            }
+            if (!swapped) {
+                /* Could just return zero here
+                instead swap this row with current "last" row
+                and decrement number of rows to look at
+                (as the last ones will be all zero) */
+                zero_on_diag = true;
+                swap_rows(mat,order, i, last_row - 1);
+                last_row--;
+            }
+        } // end if [i][i] is zero
+
+    } // end for i
+
+    for(int i = 0; i < order; ++i) {
+        det *= mat[i][i];
+    }
+
+    return det;
+}
+
+// Calculate the determinant sequentially in OpenMP.
+long double complex determinant_impl_omp( long double complex **mat, int order) {
+    long double complex tmp_frac, det = 1;
+    int last_row;
+    int i, j, k;
+    int num_swaps;
+    bool zero_on_diag, swapped;
+
+    // default to success
+    num_swaps = 0;
+    zero_on_diag = false;
+    
+    last_row = order;
+
+    // row 0 stays unaltered
+    for (i=1; i < last_row; i++) {      // last_row = mat_size unless get an all zero row
+        
+        #pragma omp parallel for num_threads(i) schedule(static)
+        for (k=0; k < i; k++) {
+            tmp_frac = mat[i][k] / mat[k][k];
+            for (j = k+1; j < order; j++) {
+                mat[i][j] = mat[i][j] - (tmp_frac * mat[k][j]);
+            }
+        }
+
+        if(mat[i][i] == 0) {
+            /* It is now possible we set a diagonal element to zero
+            so we shall do column swaps to fix this
+            If this fails then row i is all zeros, so
+            there would be a zero on the diagonal somewhere anyway,
+            and we will leave it here. */
+    
+            j = i+1; // all cols left of col[i] will have zeros in row[i]
+            swapped = false;
+            while ((!swapped) && (j < order)) {
+                if ( mat[i][j]!=0 ) {
+                    swap_cols(mat, order, i, j);
+                    swapped = true;
+                    num_swaps++;
+                }
+                j++;
+            }
+            if (!swapped) {
+                /* Could just return zero here
+                instead swap this row with current "last" row
+                and decrement number of rows to look at
+                (as the last ones will be all zero) */
+                zero_on_diag = true;
+                swap_rows(mat,order, i, last_row - 1);
+                last_row--;
+            }
+        } // end if [i][i] is zero
+
+    } // end for i
+
+    for(int i = 0; i < order; ++i) {
+        det *= mat[i][i];
+    }
+
+    return det;
+}
+
 
 void printVect(long double complex *vec, int size,char *name){
 	for(int k=0 ; k<size ; k++){
-        printf("%s[%d] = %lf + i%lf \n",name,k,creal(vec[k]),cimag(vec[k]));
+        printf("%s[%d] = %lf + %lfi \n",name,k,creal(vec[k]),cimag(vec[k]));
     }
 }
 
 void printMatrix(long double complex **mat, int rows, int cols, char *name){
-    for(int c=0 ; c<cols ; c++)
+    for(int c=0 ; c<cols ; c++){
         for(int r=0 ; r<rows ; r++) {
-            printf("%s[%d][%d] = %lf + i%lf \n",name,r,c,creal(mat[r][c]),cimag(mat[r][c]));
+            printf("%s[%d][%d] = %lf + %lfi \n",name,r,c,creal(mat[r][c]),cimag(mat[r][c]));
         }
+    }
+}
+
+void printMatrix2(long double complex **mat, int rows, int cols, char *name){
+    for(int r=0 ; r<rows ; r++) {
+        for(int c=0 ; c<cols ; c++){
+            printf("%.0lf + %.0lfi\t",creal(mat[r][c]),cimag(mat[r][c]));
+        }
+        printf("\n");
+    }
 }
 
 double sinc(double input ){
@@ -355,5 +483,23 @@ double sinc(double input ){
         return sin(PI*input)/(PI*input);
     } else {
         return 1;
+    }
+}
+
+void swap_rows(long double complex **mat, int order, int row1, int row2){
+    long double complex temp;
+    for (int i=0; i<order; ++i){
+        temp = mat[row2][i];
+        mat[row2][i] = mat[row1][i];
+        mat[row1][i] = temp;
+    }
+}
+
+void swap_cols(long double complex **mat, int order, int row1, int row2){
+    long double complex temp;
+    for (int i=0; i<order; ++i){
+        temp = mat[i][row2];
+        mat[i][row2] = mat[i][row1];
+        mat[i][row1] = temp;
     }
 }

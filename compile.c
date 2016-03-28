@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
 * compiled. The three options are \"sequential\", \"openmp\" and \"mpi\" \n \
 * Example: \n \
 * 	$ g++ -w -o compile compile.c \n \
-* 	$ ./compile Sequential \n \
+* 	$ ./compile sequential \n \
 * \n \
 * For the parallel versions, the code may be run using the bash scripts. \n \
 * ------------------------------------------------------------- */ \n \n";

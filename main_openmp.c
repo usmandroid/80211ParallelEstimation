@@ -239,8 +239,7 @@ void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long doub
 		}
 	}
 
-/*
-	int size = 54;
+/*	int size = 53;
 	long double complex **Matrix = new long double complex*[size];
 	long double complex **invMatrix = new long double complex*[size];
 	long double complex **resMatrix = new long double complex*[size];
@@ -252,11 +251,23 @@ void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long doub
 			Matrix[i][j] = ((int) rand()%20) + I*((int) rand()%20);
 		}
 	}
-	double complex det = (double complex) determinant_impl(Matrix,size);
-	//printf("%lf + i%lf\n", creal(det), cimag(det));	
+	double complex det = (double complex) determinant_impl_rec(Matrix,size);
+	// double complex det1 = (double complex) CalcDeterminant(Matrix,size);;
+	double complex det2 = (double complex) determinant_impl(Matrix,size);
 
+	// printf("det = %lf + i%lf\n", creal(det), cimag(det));
+	// printf("det1 = %lf + i%lf\n", creal(det1), cimag(det1));
+	// printf("det2 = %lf + i%lf\n", creal(det2), cimag(det2));
+
+		start = clock();
 	inverse(Matrix,size,invMatrix);											//invMatrix
-	multiply(Matrix,size,size,Matrix,size,size,resMatrix);
+		stop = clock(); printf("INVERSE Elapsed Time = %f\n",(double) (stop - start));
+		start = clock();
+	inverse_omp(Matrix,size,invMatrix);										//invMatrix
+			stop = clock(); printf("INVERSE OMP Elapsed Time = %f\n",(double) (stop - start));
+//	multiply(Matrix,size,size,Matrix,size,size,resMatrix);
+
+	free(Matrix);free(invMatrix);free(resMatrix);
 */
 
 	for(int r=0 ; r<SAMPUTIL ; r++)
@@ -268,7 +279,7 @@ void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long doub
 	hermitian_omp(X4,SAMPUTIL,SAMPUTIL,X4Hermitian);							//X4Hermitian = X4'
 
 		start = clock();
-	inverse_omp2(F,SAMPUTIL,invF);												//invF
+	inverse_omp(F,SAMPUTIL,invF);												//invF
 		stop = clock(); printf("INVERSE 1 Elapsed Time = %f\n",(double) (stop - start));
 		start = clock();
 	multiply_omp(invF,SAMPUTIL,SAMPUTIL,H_EST1,SAMPUTIL,1,temp1);				//temp1 = invF*H_EST
@@ -291,7 +302,7 @@ void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long doub
 		stop = clock(); printf("ADDITION Elapsed Time = %f\n",(double) (stop - start));
 
 		start = clock();
-	inverse_omp2(Ryy,SAMPUTIL,invRyy);											//invRyy
+	inverse_omp(Ryy,SAMPUTIL,invRyy);											//invRyy
 		stop = clock(); printf("INVERSE 2 Elapsed Time = %f\n",(double) (stop - start));
 
  	multiply_omp(F,SAMPUTIL,SAMPUTIL,Rhy,SAMPUTIL,SAMPUTIL,temp1);				//temp1 = F*Rhy

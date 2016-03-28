@@ -218,7 +218,7 @@ void WiFi_channel_estimation_PS_MMSE(long double complex tx_symbols[], long doub
 			Matrix[i][j] = ((int) rand()%20) + I*((int) rand()%20);
 		}
 	}
-	double complex det = (double complex) determinant_impl(Matrix,size);
+	double complex det = (double complex) determinant_impl_rec(Matrix,size);
 	//printf("%lf + i%lf\n", creal(det), cimag(det));	
 
 	inverse(Matrix,size,invMatrix);											//invMatrix
