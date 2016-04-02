@@ -5,6 +5,8 @@ C language:
 - main.c: Contains the main program. 5 different channel estimation techniques are implemented and for each, the output generated reflects the channel frequency response.
 - main_openmp.c: Contains the main program in OpenMP. 5 different channel estimation techniques are implemented and for each, the output generated reflects the channel frequency response.
 - main_openmp.bash: Bash script of the main_openmp.c file.
+- main_mpi.c: Contains the main program in MPI. 5 different channel estimation techniques are implemented and for each, the output generated reflects the channel frequency response.
+- main_mpi.bash: Bash script of the main_mpi.c file.
 - inputs.h: Contains the inputs of the main program. tx_preamble_fft and rx_preamble_fft represent the transmitted and received preambles in the frequency domain. tx_symb and rx_symb represent a vector of length 53*15, where 53 is the number of information in each OFDM block and 15 is the number of OFDM blocks within a frame. OW2 represents an estimation of the received noise power.
 - utils.h: Contains the declaration of the main function used to manipulate matrices and operate with them. 
 - utils.c: Contains the implementation of the main function used to manipulate matrices and operate with them. 

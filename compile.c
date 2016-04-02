@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
 	char *const parmList1[] = {"/usr/bin/g++", "-w", "-o", "utils.o", "-c", "utils.c",NULL};
 	char *const parmList_Seq[] = {"/usr/bin/g++", "-w", "-o", "main", "main.c", "utils.o",NULL};
 	char *const parmList_OpenMP[] = {"/usr/bin/g++", "-fopenmp", "-w", "-o", "main_openmp", "main_openmp.c", "utils.o",NULL};
-	char *const parmList_MPI[] = {"/opt/ibm/platform_mpi/bin/mpiCC", "-o", "main_mpi", "main_mpi.c", "utils.o",NULL};
+	char *const parmList_MPI[] = {"/opt/ibm/platform_mpi/bin/mpiCC", "-w", "-Wno-deprecated", "-o", "main_mpi", "main_mpi.c", "utils.o",NULL};
 	
 	if(argc < 2){
 		printf("** error: Not enough input arguments\n");

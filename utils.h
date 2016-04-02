@@ -44,4 +44,5 @@ double sinc(double input);
 
 void printVect(long double complex *vec, int size,char *name);
 void printMatrix(long double complex **mat, int rows, int cols, char *name);
+void printMatrixReal(long double **mat, int rows, int cols, char *name);
 void printMatrix2(long double complex **mat, int rows, int cols, char *name);

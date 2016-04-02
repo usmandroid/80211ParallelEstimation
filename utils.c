@@ -469,6 +469,14 @@ void printMatrix(long double complex **mat, int rows, int cols, char *name){
     }
 }
 
+void printMatrixReal(long double **mat, int rows, int cols, char *name){
+    for(int c=0 ; c<cols ; c++){
+        for(int r=0 ; r<rows ; r++) {
+            printf("%s[%d][%d] = %lf \n",name,r,c,mat[r][c]);
+        }
+    }
+}
+
 void printMatrix2(long double complex **mat, int rows, int cols, char *name){
     for(int r=0 ; r<rows ; r++) {
         for(int c=0 ; c<cols ; c++){
