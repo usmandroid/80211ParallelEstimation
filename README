@@ -32,3 +32,7 @@ Compilation and Execution of the Sequential Implementation
 Compilation and Execution of the OpenMP Implementation:
 >> ./compile openmp
 >> ./main_openmp.bash
+
+Compilation and Execution of the MPI Implementation:
+>> ./compile mpi
+>> ./main_mpi.bash
