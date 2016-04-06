@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 * For the parallel versions, the code may be run using the bash scripts. \n \
 * ------------------------------------------------------------- */ \n \n";
 
-	printf("%s",usage);
+	// printf("%s",usage);
 	int status;
 	char *const parmList1[] = {"/usr/bin/g++", "-w", "-o", "utils.o", "-c", "utils.c",NULL};
 	char *const parmList_Seq[] = {"/usr/bin/g++", "-w", "-o", "main", "main.c", "utils.o",NULL};

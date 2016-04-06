@@ -46,3 +46,15 @@ void printVect(long double complex *vec, int size,char *name);
 void printMatrix(long double complex **mat, int rows, int cols, char *name);
 void printMatrixReal(long double **mat, int rows, int cols, char *name);
 void printMatrix2(long double complex **mat, int rows, int cols, char *name);
+
+void test_master(int numprocs);
+void test_slave(int rank);
+void multiply_mpi(long double complex **M1, int row1, int col1, long double complex *vec, int col2, long double complex **res, int from, int to);
+
+void complexToDouble(int order, long double complex **matrix, long double **matrix_Re, long double **matrix_Im);
+void doubleToComplex(int order, long double complex **matrix, long double **matrix_Re, long double **matrix_Im);
+
+int malloc2dLongDouble(long double ***array, int n, int m);
+int malloc2dLongDoubleComplex(long double complex ***array, int n, int m);
+int free2dLongDouble(long double ***array);
+int free2dLongDoubleComplex(long double complex ***array);

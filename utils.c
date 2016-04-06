@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <mpi.h>
 
 void hermitian(long double complex **M, int row, int col, long double complex **res){
 	for (int r = 0; r < row; r++)
@@ -158,7 +159,7 @@ void inverse(long double complex **A, int order, long double complex **Y) {
         {
             // get the co-factor (matrix) of A(j,i)
             GetMinor(A,minor,j,i,order);
-            // Y[i][j] = det*CalcDeterminant(minor,order-1);      // Regular Method
+            // Y[i][j] = det*CalcDeterminant(minor,order-1);          // Regular Method
             Y[i][j] = det*determinant_impl_rec(minor,order-1);        // Cramer Method
             if( (i+j)%2 == 1)
 				Y[i][j] = (-1)*Y[i][j];
@@ -170,7 +171,6 @@ void inverse(long double complex **A, int order, long double complex **Y) {
     delete [] minor;
 }
 
-// the result is put in Y
 void inverse_omp(long double complex **A, int order, long double complex **Y) {
     // get the determinant of a
     //long double complex det = 1.0/CalcDeterminant(A,order);        // Regular Method
@@ -457,14 +457,14 @@ long double complex determinant_impl_omp( long double complex **mat, int order) 
 
 void printVect(long double complex *vec, int size,char *name){
 	for(int k=0 ; k<size ; k++){
-        printf("%s[%d] = %lf + %lfi \n",name,k,creal(vec[k]),cimag(vec[k]));
+        printf("%s[%d] = %f + %fi \n",name,k,creal(vec[k]),cimag(vec[k]));
     }
 }
 
 void printMatrix(long double complex **mat, int rows, int cols, char *name){
-    for(int c=0 ; c<cols ; c++){
-        for(int r=0 ; r<rows ; r++) {
-            printf("%s[%d][%d] = %lf + %lfi \n",name,r,c,creal(mat[r][c]),cimag(mat[r][c]));
+    for(int r=0 ; r<rows ; r++) {
+        for(int c=0 ; c<cols ; c++){
+            printf("%s[%d][%d] = %f + %fi \n",name,r,c,creal(mat[r][c]),cimag(mat[r][c]));
         }
     }
 }
@@ -472,7 +472,7 @@ void printMatrix(long double complex **mat, int rows, int cols, char *name){
 void printMatrixReal(long double **mat, int rows, int cols, char *name){
     for(int c=0 ; c<cols ; c++){
         for(int r=0 ; r<rows ; r++) {
-            printf("%s[%d][%d] = %lf \n",name,r,c,mat[r][c]);
+            printf("%s[%d][%d] = %Lf \n",name,r,c,mat[r][c]);
         }
     }
 }
@@ -480,7 +480,7 @@ void printMatrixReal(long double **mat, int rows, int cols, char *name){
 void printMatrix2(long double complex **mat, int rows, int cols, char *name){
     for(int r=0 ; r<rows ; r++) {
         for(int c=0 ; c<cols ; c++){
-            printf("%.0lf + %.0lfi\t",creal(mat[r][c]),cimag(mat[r][c]));
+            printf("%.0f + %.0fi\t",creal(mat[r][c]),cimag(mat[r][c]));
         }
         printf("\n");
     }
@@ -510,4 +510,108 @@ void swap_cols(long double complex **mat, int order, int row1, int row2){
         mat[i][row2] = mat[i][row1];
         mat[i][row1] = temp;
     }
+}
+
+void test_master(int numprocs){
+    printf("I am the master node \n");
+    int rec, tag1= 1;
+    MPI_Status status;
+
+    for(int src=1; src<numprocs; src++){
+        MPI_Recv(&rec, 1, MPI_INT, src, tag1, MPI_COMM_WORLD, &status);
+    }
+}
+
+void test_slave(int rank){
+    printf("I am process %d node \n", rank);
+    int tag1= 1;
+    MPI_Send(&rank, 1, MPI_INT, 0, tag1, MPI_COMM_WORLD);
+}
+
+
+void multiply_mpi(long double complex **M1, int row1, int col1, long double complex *vec, int col2, long double complex **res, int from, int to){
+    for (int i=from; i<to; i++){ 
+        for (int j=0; j<row1; j++) {
+            res[i][j]=0;
+            for (int k=0; k<col2; k++)
+                res[i][j] += M1[i][k]*M1[k][j];
+        }
+    }
+}
+
+void complexToDouble(int order, long double complex **matrix, long double **matrix_Re, long double **matrix_Im){
+    for (int r = 0; r < order; r++){
+        for(int c = 0 ; c < order ; c++ ){
+            matrix_Re[r][c] = creal(matrix[r][c]);
+            matrix_Im[r][c] = cimag(matrix[r][c]);
+        }
+    }
+}
+
+void doubleToComplex(int order, long double complex **matrix, long double **matrix_Re, long double **matrix_Im){
+    for (int r = 0; r < order; r++){
+        for(int c = 0 ; c < order ; c++ ){
+            matrix[r][c] = matrix_Re[r][c] + I*matrix_Im[r][c];
+        }
+    }
+}
+
+int malloc2dLongDouble(long double ***array, int n, int m) {
+
+    /* allocate the n*m contiguous items */
+    long double *p = (long double *)malloc(n*m*sizeof(long double));
+    if (!p) return -1;
+
+    /* allocate the row pointers into the memory */
+    (*array) = (long double **)malloc(n*sizeof(long double*));
+    if (!(*array)) {
+       free(p);
+       return -1;
+    }
+
+    /* set up the pointers into the contiguous memory */
+    for (int i=0; i<n; i++) 
+       (*array)[i] = &(p[i*m]);
+
+    return 0;
+}
+
+int malloc2dLongDoubleComplex(long double complex ***array, int n, int m) {
+
+    /* allocate the n*m contiguous items */
+    long double complex *p = (long double complex*)malloc(n*m*sizeof(long double complex));
+    if (!p) return -1;
+
+    /* allocate the row pointers into the memory */
+    (*array) = (long double complex**)malloc(n*sizeof(long double complex*));
+    if (!(*array)) {
+       free(p);
+       return -1;
+    }
+
+    /* set up the pointers into the contiguous memory */
+    for (int i=0; i<n; i++) 
+       (*array)[i] = &(p[i*m]);
+
+    return 0;
+}
+
+int free2dLongDouble(long double ***array) {
+    /* free the memory - the first element of the array is at the start */
+    free(&((*array)[0][0]));
+
+    /* free the pointers into the memory */
+    free(*array);
+
+    return 0;
+}
+
+int free2dLongDoubleComplex(long double complex***array) {
+    /* free the memory - the first element of the array is at the start */
+    free(&((*array)[0][0]));
+
+    /* free the pointers into the memory */
+    free(*array);
+
+    return 0;
 }
