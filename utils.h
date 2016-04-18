@@ -3,6 +3,7 @@
 #include <math.h>
 #include <vector>
 #include <complex.h>
+#include <mpi.h>
 
 #define PI M_PI
 #define TWOPI (2.0*PI)
@@ -13,6 +14,21 @@
 #define P1 19
 #define P2 33
 #define P3 47
+
+typedef struct {
+    int numprocs, rank, res_LS;
+    int tag1, tag2, tag3;
+    long double complex conj1, conj2;
+    MPI_Status status;
+} Common_LT;
+
+typedef struct {
+    int numprocs, rank, res_LS;
+    int tag1, tag2, tag3, tag4, tag5, tag6;
+    long double complex H_PILOTS[4];
+    long double H_PILOTS_real[4], H_PILOTS_imag[4];
+    MPI_Status status;
+} Common_PS;
 
 void hermitian(long double complex **M, int row, int col, long double complex **res);
 void hermitian_omp(long double complex **M, int row, int col, long double complex **res);
@@ -38,6 +54,8 @@ void swap_cols(long double complex **mat, int order, int row1, int row2);
 
 void inverse(long double complex **A, int order, long double complex **Y);
 void inverse_omp(long double complex **A, int order, long double complex **Y);
+void inverse_mpi(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]);
+void inverse_mpi_beta(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]);
 
 void fft_impl(double data[], int nn, int isign);
 double sinc(double input);

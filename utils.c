@@ -1,5 +1,4 @@
 #include "utils.h"
-#include <mpi.h>
 
 void hermitian(long double complex **M, int row, int col, long double complex **res){
 	for (int r = 0; r < row; r++)
@@ -139,7 +138,6 @@ void addition_omp(long double complex **M1, int row1, int col1, long double comp
 }
 
 // matrix inversioon --- https://chi3x10.wordpress.com/2008/05/28/calculate-matrix-inversion-in-c/
-// the result is put in Y
 void inverse(long double complex **A, int order, long double complex **Y) {
     // get the determinant of a
     //long double complex det = 1.0/CalcDeterminant(A,order);        // Regular Method
@@ -192,6 +190,161 @@ void inverse_omp(long double complex **A, int order, long double complex **Y) {
             Y[i][j] = det*determinant_impl_omp(minor,order-1);    // Cramer Method recursive seq
             if( (i+j)%2 == 1)
                 Y[i][j] = (-1)*Y[i][j];
+        }
+    }
+
+    // release memory
+    delete [] temp;
+    delete [] minor;
+}
+
+void inverse_mpi(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]) {
+    // get the determinant of a
+    //long double complex det = 1.0/CalcDeterminant(A,order);            // Regular Method
+    long double complex det = 1.0/determinant_impl_rec(A,order);         // Cramer Method
+    long double complex temporal, res;
+    long double res_real[SAMPUTIL][3], res_imag[SAMPUTIL][3];
+    int i,j;
+ 
+    // memory allocation
+    long double complex *temp = new long double complex [(order-1)*(order-1)];
+    long double complex **minor = new long double complex *[order-1];
+
+    for(int i=0;i<order-1;i++)
+        minor[i] = temp+(i*(order-1));
+
+    if(commonPS->rank!=0){
+        for(j=0;j<order;j++) {
+            GetMinor(A,minor,j,commonPS->rank,order);
+            res = det*determinant_impl_rec(minor,order-1);              // Cramer Method Y[commonPS->rank][j] = res1
+            if( (commonPS->rank+j)%2 == 1) {res = (-1)*res; }
+            res_real[j][0] = creal(res); res_imag[j][0] = cimag(res);
+
+            GetMinor(A,minor,j,commonPS->rank+20,order);
+            res = det*determinant_impl_rec(minor,order-1);              // Cramer Method Y[commonPS->rank][j] = res1
+            if( (commonPS->rank+20+j)%2 == 1) {res = (-1)*res; }
+            res_real[j][1] = creal(res); res_imag[j][1] = cimag(res);
+
+            if(commonPS->rank<13){
+                GetMinor(A,minor,j,commonPS->rank+40,order);
+                res = det*determinant_impl_rec(minor,order-1);          // Cramer Method Y[commonPS->rank][j] = res1
+                if( (commonPS->rank+40+j)%2 == 1) {res = (-1)*res; }
+                res_real[j][2] = creal(res); res_imag[j][2] = cimag(res);
+            }
+        }
+
+        MPI_Send(res_real, order*3, MPI_LONG_DOUBLE, 0, commonPS->tag1, MPI_COMM_WORLD);
+        MPI_Send(res_imag, order*3, MPI_LONG_DOUBLE, 0, commonPS->tag2, MPI_COMM_WORLD);
+
+    } else {
+
+        // Proc 0 does its part of the job
+        for(j=0;j<order;j++) {
+            GetMinor(A,minor,j,commonPS->rank,order);
+            Y[0][j] = det*determinant_impl_rec(minor,order-1);           // Cramer Method Y[commonPS->rank][j] = res1
+            if( (0+j)%2 == 1) {Y[0][j] = (-1)*Y[0][j]; }
+            GetMinor(A,minor,j,commonPS->rank+20,order);
+            Y[20][j] = det*determinant_impl_rec(minor,order-1);        // Cramer Method Y[commonPS->rank][j] = res1
+            if( (20+j)%2 == 1) {Y[20][j] = (-1)*Y[20][j]; }
+            GetMinor(A,minor,j,commonPS->rank+40,order);
+            Y[40][j] = det*determinant_impl_rec(minor,order-1);        // Cramer Method Y[commonPS->rank][j] = res1
+            if( (40+j)%2 == 1) {Y[40][j] = (-1)*Y[40][j]; }
+        }
+
+        // Proc 0 receives results from rest of processes
+        for(int proc=1 ; proc<commonPS->numprocs; proc++){
+            MPI_Recv(res_real, order*3, MPI_LONG_DOUBLE, proc, commonPS->tag1, MPI_COMM_WORLD, &commonPS->status);
+            MPI_Recv(res_imag, order*3, MPI_LONG_DOUBLE, proc, commonPS->tag2, MPI_COMM_WORLD, &commonPS->status);
+            for(int j=0; j<SAMPUTIL; j++){
+                Y[proc+0][j] = res_real[j][0] + I*res_imag[j][0];
+                Y[proc+20][j] = res_real[j][1] + I*res_imag[j][1];
+                if(proc<13)
+                    Y[proc+40][j] = res_real[j][2] + I*res_imag[j][2];
+            }
+            
+        }
+    }
+
+    // release memory
+    delete [] temp;
+    delete [] minor;
+}
+
+void inverse_mpi_beta(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]) {
+    // get the determinant of a
+    //long double complex det = 1.0/CalcDeterminant(A,order);            // Regular Method
+    long double complex det = 1.0/determinant_impl_rec(A,order);         // Cramer Method
+    long double complex temporal, res;
+    int i,j;
+
+    int numTasks1 = ceil((double) SAMPUTIL/commonPS->numprocs);
+    int numTasks2 = floor((double) SAMPUTIL/commonPS->numprocs);
+    int set1 = SAMPUTIL%commonPS->numprocs;
+    long double res_real[SAMPUTIL][numTasks1], res_imag[SAMPUTIL][numTasks1];
+ 
+    // memory allocation
+    long double complex *temp = new long double complex [(order-1)*(order-1)];
+    long double complex **minor = new long double complex *[order-1];
+
+    for(int i=0;i<order-1;i++)
+        minor[i] = temp+(i*(order-1));
+
+    if(commonPS->rank!=0){
+        if(commonPS->rank<set1){
+            // set 1
+            for(j=0;j<order;j++) {
+                for(int task=0; task<numTasks1; task++){
+                    GetMinor(A,minor,j,commonPS->rank+task*commonPS->numprocs,order);
+                    res = det*determinant_impl_rec(minor,order-1);              // Cramer Method Y[commonPS->rank][j] = res1
+                    if( (commonPS->rank+task*commonPS->numprocs+j)%2 == 1) {res = (-1)*res; }
+                    res_real[j][task] = creal(res); res_imag[j][task] = cimag(res);
+                }
+            }
+        } else {
+            // set 2
+            for(j=0;j<order;j++) {
+                for(int task=0; task<numTasks2; task++){
+                    GetMinor(A,minor,j,commonPS->rank+task*commonPS->numprocs,order);
+                    res = det*determinant_impl_rec(minor,order-1);              // Cramer Method Y[commonPS->rank][j] = res1
+                    if( (commonPS->rank+task*commonPS->numprocs+j)%2 == 1) {res = (-1)*res; }
+                    res_real[j][task] = creal(res); res_imag[j][task] = cimag(res);
+                }
+            }
+        }
+
+        printf("Proc %d sends to 0 \n", commonPS->rank);
+        MPI_Send(res_real, order*numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag1, MPI_COMM_WORLD);
+        MPI_Send(res_imag, order*numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag2, MPI_COMM_WORLD);
+
+    } else {
+        // Proc 0 does its part of the job
+        for(j=0;j<order;j++) {
+            for(int task=0; task<numTasks1; task++){
+                GetMinor(A,minor,j,0+task*commonPS->numprocs,order);
+                Y[0+task*commonPS->numprocs][j] = det*determinant_impl_rec(minor,order-1);              // Cramer Method Y[commonPS->rank][j] = res1
+                if( (0+task*commonPS->numprocs+j)%2 == 1) {Y[0+task*commonPS->numprocs][j] = (-1)*Y[0+task*commonPS->numprocs][j]; }
+            }
+            printf("\t\tProc 0 finished round %d\n",j);
+        }
+
+        // Proc 0 receives results from rest of processes
+        for(int proc=1 ; proc<commonPS->numprocs; proc++){
+            printf("\t\tProc 0 recv from %d\n",proc);
+            MPI_Recv(res_real, order*numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag1, MPI_COMM_WORLD, &commonPS->status);
+            MPI_Recv(res_imag, order*numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag2, MPI_COMM_WORLD, &commonPS->status);
+            if(proc<set1){
+                for(int j=0; j<SAMPUTIL; j++){
+                    for(int task=0; task<numTasks1; task++){
+                        Y[proc + task*commonPS->numprocs][j] = res_real[j][task] + I*res_imag[j][task];
+                    }
+                }
+            } else {
+                for(int j=0; j<SAMPUTIL; j++){
+                    for(int task=0; task<numTasks2; task++){
+                        Y[proc + task*commonPS->numprocs][j] = res_real[j][task] + I*res_imag[j][task];
+                    }
+                }
+            }
         }
     }
 
