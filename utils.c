@@ -198,7 +198,7 @@ void inverse_omp(long double complex **A, int order, long double complex **Y) {
     delete [] minor;
 }
 
-void inverse_mpi(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]) {
+void inverse_mpi_old(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]) {
     // get the determinant of a
     //long double complex det = 1.0/CalcDeterminant(A,order);            // Regular Method
     long double complex det = 1.0/determinant_impl_rec(A,order);         // Cramer Method
@@ -270,7 +270,7 @@ void inverse_mpi(long double complex **A, int order, long double complex **Y, Co
     delete [] minor;
 }
 
-void inverse_mpi_beta(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]) {
+void inverse_mpi(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]) {
     // get the determinant of a
     //long double complex det = 1.0/CalcDeterminant(A,order);            // Regular Method
     long double complex det = 1.0/determinant_impl_rec(A,order);         // Cramer Method

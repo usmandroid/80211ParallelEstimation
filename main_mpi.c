@@ -652,8 +652,7 @@ void WiFi_channel_estimation_PS_MMSE1(long double complex tx_symbols[], long dou
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
-	// inverse_mpi(Fmatrix, SAMPUTIL, invF, &commonPS_local, argc, argv);				//invF
-	inverse_mpi_beta(Fmatrix, SAMPUTIL, invF, &commonPS_local, argc, argv);				//invF
+	inverse_mpi(Fmatrix, SAMPUTIL, invF, &commonPS_local, argc, argv);				//invF
 
 	if(commonPS->rank==0){
 
@@ -679,8 +678,8 @@ void WiFi_channel_estimation_PS_MMSE1(long double complex tx_symbols[], long dou
 	MPI_Bcast(&(Ryy_Re[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
 	MPI_Bcast(&(Ryy_Im[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
 	doubleToComplex(SAMPUTIL,Ryy,Ryy_Re,Ryy_Im);
-	// inverse_mpi(Ryy,SAMPUTIL,invRyy, &commonPS_local, argc, argv);						// invRyy
-	inverse_mpi_beta(Ryy,SAMPUTIL,invRyy, &commonPS_local, argc, argv);						// invRyy
+	
+	inverse_mpi(Ryy,SAMPUTIL,invRyy, &commonPS_local, argc, argv);						// invRyy
 
 	if(commonPS->rank==0){
 	 	multiply(Fmatrix,SAMPUTIL,SAMPUTIL,temp2,SAMPUTIL,SAMPUTIL,temp1);				// temp1 = F*Rhy

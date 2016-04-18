@@ -40,4 +40,5 @@ Compilation and Execution of the MPI Implementation:
 IMPORTANT NOTES: 
 1. MPI functions are included in utils.c, forcing the 3 implementations to be compiled using the mpiCC compiler. The user is endorsed to use the compile function due to potential
 oversights.
-2. MPI Implementation is made to work on 20 processes. Please, make sure that those are reserved prior its execution.
+2. MMSE Implementation using MPI balances the process-load automatically, depending on the number of processes that we run the execution on. The same process still has to be done for 
+the rest of the functions, which are configured for 20 processes.
