@@ -1,8 +1,3 @@
-#include <omp.h>
-#include <math.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
 #include "inputs.h"
 #include "utils.h"
 
@@ -39,23 +34,26 @@ int main(void) {
 
 	start_tot = clock();
 
-	printf("Processing LT Least Square...\n"); start = clock(); 
-	WiFi_channel_estimation_LT_LS(tx_preamble_fft,rx_preamble_fft,H_EST_LT_LS); stop = clock();
-	printf("Elapsed time: %f\n",(double) (stop - start));
+	// printf("Processing LT Least Square...\n"); start = clock(); 
+	// WiFi_channel_estimation_LT_LS(tx_preamble_fft,rx_preamble_fft,H_EST_LT_LS); stop = clock();
+	// printf("Elapsed time: %f\n",(double) (stop - start));
 	printf("Processing PS Linear Interpolation...\n"); start = clock(); 
 	WiFi_channel_estimation_PS_Linear(tx_symb_vec,rx_symb_vec,H_EST_PS_Linear); stop = clock();
+	for(int i=0; i<SAMPUTIL; i++){
+    	printf("H_EST[%d] = %f + %fi\n",i,creal(H_EST_PS_Linear[i]),cimag(H_EST_PS_Linear[i]));
+    }
 	printf("Elapsed time: %f\n",(double) (stop - start));
-	printf("Processing PS Cubic Interpolation...\n"); start = clock();
-	WiFi_channel_estimation_PS_Cubic(tx_symb_vec,rx_symb_vec,H_EST_PS_Cubic); stop = clock();
-	printf("Elapsed time: %f\n",(double) (stop - start));
-	printf("Processing PS Sinc Interpolation...\n"); start = clock();
-	WiFi_channel_estimation_PS_Sinc(tx_symb_vec,rx_symb_vec,H_EST_PS_Sinc); stop = clock();
-	printf("Elapsed time: %f\n",(double) (stop - start));
-	printf("Processing PS MMSE...\n"); start = clock();
-	WiFi_channel_estimation_PS_MMSE(tx_symb_vec,rx_symb_vec,Fmatrix,OW2,H_EST_LT_LS,H_EST_PS_MMSE); stop = clock();
-	printf("Elapsed time: %f\n",(double) (stop - start));
+	// printf("Processing PS Cubic Interpolation...\n"); start = clock();
+	// WiFi_channel_estimation_PS_Cubic(tx_symb_vec,rx_symb_vec,H_EST_PS_Cubic); stop = clock();
+	// printf("Elapsed time: %f\n",(double) (stop - start));
+	// printf("Processing PS Sinc Interpolation...\n"); start = clock();
+	// WiFi_channel_estimation_PS_Sinc(tx_symb_vec,rx_symb_vec,H_EST_PS_Sinc); stop = clock();
+	// printf("Elapsed time: %f\n",(double) (stop - start));
+	// printf("Processing PS MMSE...\n"); start = clock();
+	// WiFi_channel_estimation_PS_MMSE(tx_symb_vec,rx_symb_vec,Fmatrix,OW2,H_EST_LT_LS,H_EST_PS_MMSE); stop = clock();
+	// printf("Elapsed time: %f\n",(double) (stop - start));
 
-	printf("**** Total Elapsed time: %f\n",(double) (stop - start_tot));
+	// printf("**** Total Elapsed time: %f\n",(double) (stop - start_tot));
 	
 	// printVect(H_EST_LT_LS,SAMPUTIL,"H_EST_LT_LS");
 	// printVect(H_EST_PS_Linear,SAMPUTIL,"H_EST_PS_Linear");

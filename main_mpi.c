@@ -1,8 +1,3 @@
-#include <mpi.h>
-#include <math.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
 #include "inputs.h"
 #include "utils.h"
 
@@ -23,22 +18,20 @@ int main(int argc, char *argv[]) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Get_processor_name(processor_name, &namelen);
 
+	int set_length = 15;		// Number of processes to assign each frame. It cannot exceed
+	int frames_parallel = floor((double) numprocs/set_length);
+	if(set_length>numprocs){
+		printf("The number of Processes assigned to each frame cannot exceed the total number of available processes\n");
+		return -1; } else if(numprocs%set_length!=0){
+		printf("The number of Processes has to be divisible by the number of processes assigned to each frame\n");
+		return -1; }
+
 	clock_t start, stop, start_tot, stop_tot;
 	long double complex tx_symb_vec[SAMPUTIL],rx_symb_vec[SAMPUTIL];
 	long double complex H_EST_LT_LS[SAMPUTIL],H_EST_PS_Linear[SAMPUTIL],H_EST_PS_Cubic[SAMPUTIL];
 	long double complex H_EST_PS_Sinc[SAMPUTIL], H_EST_PS_MMSE[SAMPUTIL];
-	long double complex H_PILOTS[4];
 	long double H_PILOTS_real[4],H_PILOTS_imag[4];
 	int OFDM_block = 0;
-
-	if(rank == 0){
-		/* One OFDM Symbol isextracted to perform channel estimation */
-		printf("Proc %d Processing Block %d\n", rank, OFDM_block);
-		for(int r=0 ; r<SAMPUTIL ; r++){
-			tx_symb_vec[r] = tx_symb[SAMPUTIL*OFDM_block + r];
-			rx_symb_vec[r] = rx_symb[SAMPUTIL*OFDM_block + r];
-		}
-	}
 
 	MPI_Barrier(MPI_COMM_WORLD);	
 
@@ -46,106 +39,121 @@ int main(int argc, char *argv[]) {
 	/* ----------------------------------- COMMON VARIABLES -----------------------------------*/
 
 	if(rank == 0){
+		/* One OFDM Symbol isextracted to perform channel estimation */
+		printf("Proc %d Processing Block %d\n", rank, OFDM_block);
+
+		for(int r=0 ; r<SAMPUTIL ; r++){
+			tx_symb_vec[r] = tx_symb[SAMPUTIL*OFDM_block + r];
+			rx_symb_vec[r] = rx_symb[SAMPUTIL*OFDM_block + r];
+		}
+
 		long double complex tx_pilots[4] = {tx_symb_vec[P0],tx_symb_vec[P1],tx_symb_vec[P2],tx_symb_vec[P3]};
 		long double complex rx_pilots[4] = {rx_symb_vec[P0],rx_symb_vec[P1],rx_symb_vec[P2],rx_symb_vec[P3]};
 
 		for(int i=0 ; i<4 ; i++){
 			H_PILOTS_real[i] = creal(rx_pilots[i] / tx_pilots[i]);
 			H_PILOTS_imag[i] = cimag(rx_pilots[i] / tx_pilots[i]);
-			H_PILOTS[i] = rx_pilots[i] / tx_pilots[i];
 		}
 	}
 
 	MPI_Bcast(H_PILOTS_real, 4, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
 	MPI_Bcast(H_PILOTS_imag, 4, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
 
-	for (int r = 0; r < 4; r++)
-        H_PILOTS[r] = H_PILOTS_real[r] + I*H_PILOTS_imag[r];
+	MPI_Comm commFrame[frames_parallel];
+	MPI_Group grFrame[frames_parallel], orig_group;
+	int *ranks = (int *) malloc(set_length*sizeof(int));
+	MPI_Comm_group(MPI_COMM_WORLD, &orig_group);
+	for(int frame = 0; frame<frames_parallel; frame++){
+		for(int i=0; i<set_length; i++)
+			ranks[i]=i+frame*set_length;
+		MPI_Group_incl(orig_group, set_length, ranks, &grFrame[frame]);
+		MPI_Comm_create(MPI_COMM_WORLD, grFrame[frame], &commFrame[frame]);
+	}
 
     Common_LT commonLT;
-	commonLT.numprocs = numprocs;
-	commonLT.rank = rank;
+	commonLT.numprocs = set_length;
+	commonLT.rank = rank%set_length;
 	commonLT.status = status;
 	commonLT.tag1 = 1; commonLT.tag2 = 2; commonLT.tag3 = 3;
+	if(rank!=0) { commonLT.comm = commFrame[(int) rank/set_length]; }
+	else { commonLT.comm = commFrame[0]; }
 
 	Common_PS commonPS;
-	commonPS.numprocs = numprocs;
-	commonPS.rank = rank;
+	commonPS.numprocs = set_length;
+	commonPS.rank = rank%set_length;
 	commonPS.status = status;
 	commonPS.tag1 = 1; commonPS.tag2 = 2; commonPS.tag3 = 3;
 	commonPS.tag4 = 4; commonPS.tag5 = 5; commonPS.tag6 = 6;
-	commonPS.H_PILOTS_real[0] = H_PILOTS_real[0];
-	commonPS.H_PILOTS_real[1] = H_PILOTS_real[1];
-	commonPS.H_PILOTS_real[2] = H_PILOTS_real[2];
-	commonPS.H_PILOTS_imag[3] = H_PILOTS_real[3];
-	commonPS.H_PILOTS_imag[0] = H_PILOTS_imag[0];
-	commonPS.H_PILOTS_imag[1] = H_PILOTS_imag[1];
-	commonPS.H_PILOTS_imag[2] = H_PILOTS_imag[2];
-	commonPS.H_PILOTS_imag[3] = H_PILOTS_imag[3];
-	commonPS.H_PILOTS[0] = H_PILOTS_real[0] + I*H_PILOTS_imag[0];
-	commonPS.H_PILOTS[1] = H_PILOTS_real[1] + I*H_PILOTS_imag[1];
-	commonPS.H_PILOTS[2] = H_PILOTS_real[2] + I*H_PILOTS_imag[2];
-	commonPS.H_PILOTS[3] = H_PILOTS_real[3] + I*H_PILOTS_imag[3];
+	for(int i=0 ; i<SAMPUTIL; i++) { commonPS.H_PILOTS[i] = 0.0; }
+	commonPS.H_PILOTS[P0] = H_PILOTS_real[0] + I*H_PILOTS_imag[0];
+	commonPS.H_PILOTS[P1] = H_PILOTS_real[1] + I*H_PILOTS_imag[1];
+	commonPS.H_PILOTS[P2] = H_PILOTS_real[2] + I*H_PILOTS_imag[2];
+	commonPS.H_PILOTS[P3] = H_PILOTS_real[3] + I*H_PILOTS_imag[3];
+	if(rank!=0) { commonPS.comm = commFrame[(int) rank/set_length]; } 
+	else { commonPS.comm = commFrame[0]; }
 
 	/* ----------------------------------------------------------------------------------------*/
 	/* -------------------------------- LT LEAST SQUARE ---------------------------------------*/
 
-	// 			MPI_Barrier(MPI_COMM_WORLD); start = clock();
-	// WiFi_channel_estimation_LT_LS(tx_preamble_fft, rx_preamble_fft, H_EST_LT_LS, &commonLT, argc, argv);
-	// 			if(rank==0){
-	// 				stop = clock();
-	// 				printf("LT - Elapsed time in us %Lf\n",(long double) (stop - start)*1e6/CLOCKS_PER_SEC);
-	// 			}
+				MPI_Barrier(MPI_COMM_WORLD); start = clock();
+	WiFi_channel_estimation_LT_LS(tx_preamble_fft, rx_preamble_fft, H_EST_LT_LS, &commonLT, argc, argv);
+				MPI_Barrier(MPI_COMM_WORLD);
+				if(rank==0){
+					stop = clock();
+					printf("LT - Elapsed time in us %Lf\n",(long double) (stop - start)*1e6/CLOCKS_PER_SEC);
+				}
 
 	/* ----------------------------------------------------------------------------------------*/
 	/* -------------------------------- PS LINEAR INTERPOLATION -------------------------------*/
 
-	 			MPI_Barrier(MPI_COMM_WORLD); start = clock();	
-	 WiFi_channel_estimation_PS_Linear(H_EST_LT_LS, &commonPS, argc, argv);
-	 			if(rank==0){
-	 				stop = clock();
-	 				printf("PS Linear - Elapsed time in us %Lf\n",(long double) (stop - start)*1e6/CLOCKS_PER_SEC);
-	 			}	
-
-	/* ----------------------------------------------------------------------------------------*/
-	/* -------------------------------- PS SINC INTERPOLATION ---------------------------------*/
-
-	 			MPI_Barrier(MPI_COMM_WORLD); start = clock();
-	 WiFi_channel_estimation_PS_Sinc(H_EST_PS_Sinc, &commonPS, argc, argv);
-	 			if(rank==0){
-	 				stop = clock();
-	 				printf("PS Sinc Interpolation - Elapsed time %f\n",(double) (stop - start));
-	 			}
+	 // 			MPI_Barrier(MPI_COMM_WORLD); start = clock();	
+	 // WiFi_channel_estimation_PS_Linear(H_EST_LT_LS, &commonPS, argc, argv);
+	 // 			if(rank==0){
+	 // 				stop = clock();
+	 // 				printf("PS Linear - Elapsed time in us %Lf\n",(long double) (stop - start)*1e6/CLOCKS_PER_SEC);
+	 // 			}
 
 	/* ----------------------------------------------------------------------------------------*/
 	/* -------------------------------- PS CUBIC INTERPOLATION --------------------------------*/
 
-				MPI_Barrier(MPI_COMM_WORLD); start = clock();
-	WiFi_channel_estimation_PS_Cubic(H_EST_PS_Cubic, &commonPS, argc, argv);
-				if(rank==0){
-					stop = clock();
-					printf("PS Cubic Interpolation - Elapsed time %f\n",(double) (stop - start));
-				}
+	// 			MPI_Barrier(MPI_COMM_WORLD); start = clock();
+	// WiFi_channel_estimation_PS_Cubic(H_EST_PS_Cubic, &commonPS, argc, argv);
+	// 			if(rank==0){
+	// 				stop = clock();
+	// 				printf("PS Cubic Interpolation - Elapsed time %f\n",(double) (stop - start));
+	// 			}	
+
+	/* ----------------------------------------------------------------------------------------*/
+	/* -------------------------------- PS SINC INTERPOLATION ---------------------------------*/
+
+	 // 			MPI_Barrier(MPI_COMM_WORLD); start = clock();
+	 // WiFi_channel_estimation_PS_Sinc(H_EST_PS_Sinc, &commonPS, argc, argv);
+	 // 			if(rank==0){
+	 // 				stop = clock();
+	 // 				printf("PS Sinc Interpolation - Elapsed time %f\n",(double) (stop - start));
+	 // 			}
 
 	/* ----------------------------------------------------------------------------------------*/
 	/* -------------------------------- PS MMSE INTERPOLATION (METHOD 1)-----------------------*/
 
 				MPI_Barrier(MPI_COMM_WORLD); start = clock();
 	WiFi_channel_estimation_PS_MMSE1(tx_symb_vec, rx_symb_vec, H_EST_PS_MMSE, H_EST_LT_LS, &commonPS, argc, argv);	
+				MPI_Barrier(MPI_COMM_WORLD);
 				if(rank==0){
 					stop = clock();
-					printf("PS MMSE Interpolation (1) - Elapsed time %f\n",(double) (stop - start));
+					printf("\t\tPS MMSE Interpolation (1) - groups: %d Proc. per group: %d\n",frames_parallel, set_length, (double) (stop - start));
+					printf("\t\tPS MMSE Interpolation (1) - Elapsed time %f\n",(double) (stop - start));
 				}
 
 	/* ----------------------------------------------------------------------------------------*/
 	/* -------------------------------- PS MMSE INTERPOLATION (METHOD 2)-----------------------*/
 
-	 			MPI_Barrier(MPI_COMM_WORLD); start = clock();
-	 WiFi_channel_estimation_PS_MMSE2(tx_symb_vec, rx_symb_vec, H_EST_PS_MMSE, H_EST_LT_LS, &commonPS, argc, argv);	
-	 			if(rank==0){
-	 				stop = clock();
-	 				printf("PS MMSE Interpolation (2) - Elapsed time %f\n",(double) (stop - start));
-	 			}
+	 // 			MPI_Barrier(MPI_COMM_WORLD); start = clock();
+	 // WiFi_channel_estimation_PS_MMSE2(tx_symb_vec, rx_symb_vec, H_EST_PS_MMSE, H_EST_LT_LS, &commonPS, argc, argv);	
+	 // 			if(rank==0){
+	 // 				stop = clock();
+	 // 				printf("PS MMSE Interpolation (2) - Elapsed time %f\n",(double) (stop - start));
+	 // 			}
 
 	MPI_Finalize();
 	return 0;
@@ -158,68 +166,76 @@ int main(int argc, char *argv[]) {
 *
 /* ----------------------------------------------------------------------------------------*/
 void WiFi_channel_estimation_LT_LS(long double complex tx_pre[], long double complex rx_pre[], long double complex H_EST[], Common_LT *commonLT, int argc, char *argv[]){
-	long double res_LS[4];
 	long double conj1, conj2;
 	int chunk[4];
 
-	if(commonLT->rank == 0){
+	int numTasks1 = ceil((double) SAMPUTIL/commonLT->numprocs);
+	int numTasks2 = floor((double) SAMPUTIL/commonLT->numprocs);
+	int set1 = SAMPUTIL%commonLT->numprocs;
 
-		printf("Processing LT Least Square...\n");
+	long double res_real[numTasks1],res_imag[numTasks1];
+	int index;
 
-		/* Processor 0 Distributes 27 tasks among the 20 processors.
-		*  Proc 0-5: Perform 2 tasks. Proc 6-19: Perform 1 task.
-		*/
-		for(int dest=1 ; dest<commonLT->numprocs; dest++){
-			chunk[0] = dest;
-			chunk[1] = dest + 27;
-			if(dest<6){
-				chunk[2] = dest + commonLT->numprocs;
-				chunk[3] = dest + commonLT->numprocs + 27;
-			}
-			MPI_Send(chunk, 4, MPI_INT, dest, commonLT->tag1, MPI_COMM_WORLD);
-		}
+	if(commonLT->rank!=0){
+        if(commonLT->rank<set1){    	
+        	for(int task=0; task<numTasks1; task++){
+        		index = commonLT->rank + task*commonLT->numprocs;
+        		if(index!=26){
+        			conj1 = creal(tx_pre[index]) - cimag(tx_pre[index]);
+					res_real[task] = creal(( conj1*rx_pre[index] ) / ( conj1*tx_pre[index] ));	
+					res_imag[task] = creal(( conj1*rx_pre[index] ) / ( conj1*tx_pre[index] ));	
+        		} else {
+        			res_real[task] = 0.0; res_imag[task] = 0.0;
+        		}
+        	}
+        } else {
+			for(int task=0; task<numTasks2; task++){
+				index = commonLT->rank + task*commonLT->numprocs;
+        		if(index!=26){
+        			conj1 = creal(tx_pre[index]) - cimag(tx_pre[index]);
+					res_real[task] = creal(( conj1*rx_pre[index] ) / ( conj1*tx_pre[index] ));	
+					res_imag[task] = creal(( conj1*rx_pre[index] ) / ( conj1*tx_pre[index] ));	
+        		} else {
+        			res_real[task] = 0.0; res_imag[task] = 0.0;
+        		}
+        	}
+        }
+     	MPI_Send(res_real, numTasks1, MPI_LONG_DOUBLE, 0, commonLT->tag1, commonLT->comm);
+     	MPI_Send(res_imag, numTasks1, MPI_LONG_DOUBLE, 0, commonLT->tag2, commonLT->comm);
+    } else {
+    	// Proc 0 does its part of the task
+		for(int task=0; task<numTasks1; task++){
+    		index = commonLT->rank + task*commonLT->numprocs;
+			if(index!=26){
+    			conj1 = creal(tx_pre[index]) - cimag(tx_pre[index]);
+				H_EST[index] = creal(( conj1*rx_pre[index] ) / ( conj1*tx_pre[index] ));	
+				H_EST[index] = creal(( conj1*rx_pre[index] ) / ( conj1*tx_pre[index] ));	
+    		} else {
+    			H_EST[index] = 0.0; res_imag[task] = 0.0;
+    		}
+    	}
 
-		/* Gather results from workers */
-		for (int src=1; src<commonLT->numprocs; src++) {
-			MPI_Recv(res_LS, 4, MPI_LONG_DOUBLE, src, commonLT->tag1, MPI_COMM_WORLD, &commonLT->status);
-			H_EST[src] = res_LS[0] + I*res_LS[1];
-			H_EST[src + 27] = res_LS[2] + I*res_LS[3];
-			if(src < 6) {
-				MPI_Recv(res_LS, 4, MPI_LONG_DOUBLE, src, commonLT->tag2, MPI_COMM_WORLD, &commonLT->status);
-				H_EST[src + commonLT->numprocs] = res_LS[0] + I*res_LS[1];
-				H_EST[src + commonLT->numprocs + 27] = res_LS[2] + I*res_LS[3];
-			}
-		}
+    	// Proc 0 receives work from other processes
+    	for (int proc=1; proc<commonLT->numprocs; proc++) {
+    		MPI_Recv(res_real, numTasks1, MPI_LONG_DOUBLE, proc, commonLT->tag1, commonLT->comm, &commonLT->status);
+    		MPI_Recv(res_imag, numTasks1, MPI_LONG_DOUBLE, proc, commonLT->tag2, commonLT->comm, &commonLT->status);
+    		if(proc<set1){    	
+        		for(int task=0; task<numTasks1; task++){
+        			index = proc + task*commonLT->numprocs;
+        			H_EST[index] = res_real[task] + I*res_imag[task];
+        		}
+        	} else {
+        		for(int task=0; task<numTasks2; task++){
+        			index = proc + task*commonLT->numprocs;
+        			H_EST[index] = res_real[task] + I*res_imag[task];
+        		}
+        	}
+	    }
 
-		/* Process 0 does its processing part */
-		conj1 = creal(tx_pre[0]) - cimag(tx_pre[0]);
-		conj2 = creal(tx_pre[0+27]) - cimag(tx_pre[0+27]);
-		H_EST[0] = ( conj1*rx_pre[0] ) / ( conj1*tx_pre[0] );
-		H_EST[0+27] = ( conj1*rx_pre[0+27] ) / ( conj1*tx_pre[0+27] );
-		H_EST[26] = 0.0;
-
-	} else {
-
-		MPI_Recv(chunk, 4, MPI_INT, 0, commonLT->tag1, MPI_COMM_WORLD, &commonLT->status);
-
-		conj1 = creal(tx_pre[chunk[0]]) - cimag(tx_pre[chunk[0]]);
-		conj2 = creal(tx_pre[chunk[1]]) - cimag(tx_pre[chunk[1]]);
-		res_LS[0] = creal(( conj1*rx_pre[chunk[0]] ) / ( conj1*tx_pre[chunk[0]] ));
-		res_LS[1] = cimag(( conj1*rx_pre[chunk[0]] ) / ( conj1*tx_pre[chunk[0]] ));
-		res_LS[2] = creal(( conj2*rx_pre[chunk[1]] ) / ( conj2*tx_pre[chunk[1]] ) );
-		res_LS[3] = cimag(( conj2*rx_pre[chunk[1]] ) / ( conj2*tx_pre[chunk[1]] ) );
-		MPI_Send(res_LS, 4, MPI_LONG_DOUBLE, 0, commonLT->tag1, MPI_COMM_WORLD);
-
-		if(commonLT->rank<6){
-			conj1 = creal(tx_pre[chunk[2]]) - cimag(tx_pre[chunk[2]]);
-			conj2 = creal(tx_pre[chunk[3]]) - cimag(tx_pre[chunk[3]]);
-			res_LS[0] = creal(( conj1*rx_pre[chunk[2]] ) / ( conj1*tx_pre[chunk[2]] ));
-			res_LS[1] = cimag(( conj1*rx_pre[chunk[2]] ) / ( conj1*tx_pre[chunk[2]] ));
-			res_LS[2] = creal(( conj2*rx_pre[chunk[3]] ) / ( conj2*tx_pre[chunk[3]] ) );
-			res_LS[3] = cimag(( conj2*rx_pre[chunk[3]] ) / ( conj2*tx_pre[chunk[3]] ) );
-			MPI_Send(res_LS, 4, MPI_LONG_DOUBLE, 0, commonLT->tag2, MPI_COMM_WORLD);
-		}
-	}
+	    // for(int i=0; i<SAMPUTIL; i++){
+	    // 	printf("H_EST[%d] = %f + %fi\n", i, creal(H_EST[i]), cimag(H_EST[i]));
+	    // }
+    }
 
 }
 
@@ -231,9 +247,41 @@ void WiFi_channel_estimation_LT_LS(long double complex tx_pre[], long double com
 /* ----------------------------------------------------------------------------------------*/
 void WiFi_channel_estimation_PS_Linear(long double complex H_EST[], Common_PS *commonPS, int argc, char *argv[]){
 	long double alpha, delta = P1 - P0;
-	long double res_Linear[6];
 
-	if(commonPS->rank == 0){
+	int numTasks1 = ceil((double) SAMPUTIL/commonPS->numprocs);
+	int numTasks2 = floor((double) SAMPUTIL/commonPS->numprocs);
+	int set1 = SAMPUTIL%commonPS->numprocs;
+
+	long double res_real[numTasks1],res_imag[numTasks1];
+	int index;
+
+	if(commonPS->rank != 0){
+		int param1[SAMPUTIL], param2[SAMPUTIL];
+
+		/* Each processor knows the part of the work assigned to it */
+		MPI_Recv(param1, SAMPUTIL, MPI_INT, 0, commonPS->tag1, MPI_COMM_WORLD, &commonPS->status);
+		MPI_Recv(param2, SAMPUTIL, MPI_INT, 0, commonPS->tag2, MPI_COMM_WORLD, &commonPS->status);
+
+		if(commonPS->rank<set1){    	
+        	for(int task=0; task<numTasks1; task++){
+        		index = commonPS->rank + task*commonPS->numprocs;
+        		alpha = (index-param1[index])/delta;
+        		res_real[task] = creal(commonPS->H_PILOTS[param1[index]]+( (commonPS->H_PILOTS[param2[index]]-commonPS->H_PILOTS[param1[index]] )*alpha ));
+        		res_imag[task] = cimag(commonPS->H_PILOTS[param1[index]]+( (commonPS->H_PILOTS[param2[index]]-commonPS->H_PILOTS[param1[index]] )*alpha ));
+        	}
+        } else {
+			for(int task=0; task<numTasks2; task++){
+				index = commonPS->rank + task*commonPS->numprocs;
+				alpha = (index-param1[index])/delta;
+        		res_real[task] = creal(commonPS->H_PILOTS[param1[index]]+( (commonPS->H_PILOTS[param2[index]]-commonPS->H_PILOTS[param1[index]] )*alpha ));
+        		res_imag[task] = cimag(commonPS->H_PILOTS[param1[index]]+( (commonPS->H_PILOTS[param2[index]]-commonPS->H_PILOTS[param1[index]] )*alpha ));
+        	}
+        }
+
+     	MPI_Send(res_real, numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag1, MPI_COMM_WORLD);
+     	MPI_Send(res_imag, numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag2, MPI_COMM_WORLD);
+
+	} else {
 
 		printf("Processing PS Linear Interpolation...\n");
 
@@ -241,172 +289,51 @@ void WiFi_channel_estimation_PS_Linear(long double complex H_EST[], Common_PS *c
 		*  for all the iteratiors. In this case, in order to cover 52 samples with 20 processors,
 		*  we need 3 iterations in total (ceil(SAMPUTIL/numprocs)).
 		*/
-		int param1[3][19] = {
-			{P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0},
-			{P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P2},
-			{P2,P2,P2,P2,P2,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,NULL,NULL,NULL,NULL} 
-		};
+		int param1[SAMPUTIL] = {
+			P0,P0,P0,P0,P0,P0, \
+			P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P0,P1, \
+			P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P2, \
+			P2,P2,P2,P2,P2,P2,P2,P2,P2,P2,P2,P2,P2,P2, \
+			P2,P2,P2,P2,P2 };
+
+		int param2[SAMPUTIL] = {
+			P1,P1,P1,P1,P1,P1, \
+			P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P2, \
+			P2,P2,P2,P2,P2,P2,P2,P2,P2,P2,P2,P2,P2,P3, \
+			P3,P3,P3,P3,P3,P3,P3,P3,P3,P3,P3,P3,P3,P3, \
+			P3,P3,P3,P3,P3 };
 
 		/* Proc 0 distributes work and data being used by all the processes */
 		for(int dest=1 ; dest<commonPS->numprocs ; dest++){
-			MPI_Send(param1, commonPS->numprocs*3, MPI_INT, dest, commonPS->tag1, MPI_COMM_WORLD);
-		}
-
-		/* Waits and stores value */
-		for(int src=1 ; src<commonPS->numprocs ; src++){
-			MPI_Recv(res_Linear, 6, MPI_LONG_DOUBLE, src, commonPS->tag2, MPI_COMM_WORLD, &commonPS->status);
-			H_EST[src] = res_Linear[0] + I*res_Linear[1];
-			H_EST[src + commonPS->numprocs] = res_Linear[2] + I*res_Linear[3]; 	
-			if(src < 16)
-				H_EST[src + 2*commonPS->numprocs] = res_Linear[4] + I*res_Linear[5];
+			MPI_Send(param1, SAMPUTIL, MPI_INT, dest, commonPS->tag1, MPI_COMM_WORLD);
+			MPI_Send(param2, SAMPUTIL, MPI_INT, dest, commonPS->tag2, MPI_COMM_WORLD);
 		}
 
 		/* Proc0 does also its part of the job */
-		alpha = (commonPS->rank-P1)/delta;
-		H_EST[0] = (commonPS->H_PILOTS_real[0]+( (commonPS->H_PILOTS_real[1]-commonPS->H_PILOTS_real[0] )*alpha )) + \
-			I*(commonPS->H_PILOTS_imag[0]+( (commonPS->H_PILOTS_imag[1]-commonPS->H_PILOTS_imag[0] )*alpha ));
-
-	} else {
-		int param1[3][19];
-
-		/* Each processor knows the part of the work assigned to it */
-		MPI_Recv(param1, commonPS->numprocs*3, MPI_INT, 0, commonPS->tag1, MPI_COMM_WORLD, &commonPS->status);
-
-		alpha = (commonPS->rank-param1[0][commonPS->rank-1])/delta;
-		res_Linear[0] = commonPS->H_PILOTS_real[0]+( (commonPS->H_PILOTS_real[1]-commonPS->H_PILOTS_real[0] )*alpha );
-		res_Linear[1] = commonPS->H_PILOTS_imag[0]+( (commonPS->H_PILOTS_imag[1]-commonPS->H_PILOTS_imag[0] )*alpha );
-		alpha = ((commonPS->rank+commonPS->numprocs)-param1[1][commonPS->rank-1])/delta;
-		res_Linear[2] = commonPS->H_PILOTS_real[0]+( (commonPS->H_PILOTS_real[1]-commonPS->H_PILOTS_real[0] )*alpha );
-		res_Linear[3] = commonPS->H_PILOTS_imag[0]+( (commonPS->H_PILOTS_imag[1]-commonPS->H_PILOTS_imag[0] )*alpha );
-		if(commonPS->rank < 16){
-			alpha = ((commonPS->rank+commonPS->numprocs)-param1[2][commonPS->rank-1])/delta;
-			res_Linear[4] = commonPS->H_PILOTS_real[0]+( (commonPS->H_PILOTS_real[1]-commonPS->H_PILOTS_real[0] )*alpha );
-			res_Linear[5] = commonPS->H_PILOTS_imag[0]+( (commonPS->H_PILOTS_imag[1]-commonPS->H_PILOTS_imag[0] )*alpha );
+		for(int task=0; task<numTasks1; task++){
+			index = commonPS->rank + task*commonPS->numprocs;
+			alpha = (index-param1[index])/delta;
+    		H_EST[index] =  creal(commonPS->H_PILOTS[param1[index]]+( (commonPS->H_PILOTS[param2[index]]-commonPS->H_PILOTS[param1[index]] )*alpha )) + \
+    						I*cimag(commonPS->H_PILOTS[param1[index]]+( (commonPS->H_PILOTS[param2[index]]-commonPS->H_PILOTS[param1[index]] )*alpha ));
 		}
 
-		/* Send results to Processor 0 */
-		MPI_Send(res_Linear, 6, MPI_LONG_DOUBLE, 0, commonPS->tag2, MPI_COMM_WORLD);
+		// Proc 0 receives work from other processes
+    	for (int proc=1; proc<commonPS->numprocs; proc++) {
+    		MPI_Recv(res_real, numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag1, MPI_COMM_WORLD, &commonPS->status);
+    		MPI_Recv(res_imag, numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag2, MPI_COMM_WORLD, &commonPS->status);
+    		if(proc<set1){    	
+        		for(int task=0; task<numTasks1; task++){
+        			index = proc + task*commonPS->numprocs;
+        			H_EST[index] = res_real[task] + I*res_imag[task];
+        		}
+        	} else {
+        		for(int task=0; task<numTasks2; task++){
+        			index = proc + task*commonPS->numprocs;
+        			H_EST[index] = res_real[task] + I*res_imag[task];
+        		}
+        	}
+	    }
 	}
-}
-
-/* ----------------------------------------------------------------------------------------*/
-/* -------------------------------- PS SINC INTERPOLATION ---------------------------------*
-*
-*  This function considers that there is 20 processes available. 5 different groups are created,
-*  each of them containing 4 processors. Each group will be assigned a value k, representing
-*  the index to compute. Each process within a group will compute 1 out of the 4 tasks that 
-*  each index requires to perform. Afterwars, a reduction operation will store the result on 
-*  the process whose rank is the lowest. Finally, this result will be sent to the master node.
-*  This process will repeat 11 times, so that the entire length of the vector is covered.
-*
-/* ----------------------------------------------------------------------------------------*/	
-void WiFi_channel_estimation_PS_Sinc(long double complex H_EST[], Common_PS *commonPS, int argc, char *argv[]){
-	int k;
-	long double complex myres;
-	long double res_part_real, res_part_imag, myres_real, myres_imag;
-	double a, b, c, d;
-	long double delta = P1 - P0;
-
-	/* Communicators creation. 5 groups of 4 processes are created
-	*  in order to perform a reduction operation. A communicator is
-	*  assigned to each group, allowing them to share the results after
-	*  the reduction.
-	*/
-	MPI_Comm comm1, comm2, comm3, comm4, comm5;
-	MPI_Group gr1, gr2, gr3, gr4, gr5, orig_group;
-	int *ranks = (int *) malloc(4*sizeof(commonPS->rank));
-	MPI_Comm_group(MPI_COMM_WORLD, &orig_group);
-	MPI_Comm_group(MPI_COMM_WORLD, &orig_group);
-	ranks[0]=0;ranks[1]=1;ranks[2]=2;ranks[3]=3;
-	MPI_Group_incl(orig_group, 4, ranks, &gr1);
-	MPI_Comm_create(MPI_COMM_WORLD, gr1, &comm1);
-	ranks[0]=4;ranks[1]=5;ranks[2]=6;ranks[3]=7;
-	MPI_Group_incl(orig_group, 4, ranks, &gr2);
-	MPI_Comm_create(MPI_COMM_WORLD, gr2, &comm2);
-	ranks[0]=8;ranks[1]=9;ranks[2]=10;ranks[3]=11;
-	MPI_Group_incl(orig_group, 4, ranks, &gr3);
-	MPI_Comm_create(MPI_COMM_WORLD, gr3, &comm3);
-	ranks[0]=12;ranks[1]=13;ranks[2]=14;ranks[3]=15;
-	MPI_Group_incl(orig_group, 4, ranks, &gr4);
-	MPI_Comm_create(MPI_COMM_WORLD, gr4, &comm4);
-	ranks[0]=16;ranks[1]=17;ranks[2]=18;ranks[3]=19;
-	MPI_Group_incl(orig_group, 4, ranks, &gr5);
-	MPI_Comm_create(MPI_COMM_WORLD, gr5, &comm5);
-	free(ranks);
-	
-	if(commonPS->rank == 0){
-		printf("Processing PS Sinc Interpolation...\n");
-	}
-
-	for(int i=0; i<11; i++){
-
-		k = floor(commonPS->rank/4) + 5*i;
-
-		if(k<SAMPUTIL){
-
-			if(commonPS->rank%4 == 0){
-				a = (k-P0) / delta;
-				myres = commonPS->H_PILOTS[0]*sinc(a);
-			}else if(commonPS->rank%4 == 1){
-				b = (k-P1) / delta;
-				myres = commonPS->H_PILOTS[1]*sinc(b);
-			}else if(commonPS->rank%4 == 2){
-				c = (k-P2) / delta;
-				myres = commonPS->H_PILOTS[2]*sinc(c);
-			}else if(commonPS->rank%4 == 3){
-				d = (k-P3) / delta;
-				myres = commonPS->H_PILOTS[3]*sinc(d);
-			}
-
-			myres_real = creal(myres); myres_imag = cimag(myres);
-		} else {
-			myres_real = 0.0; myres_imag = 0.0;
-		}
-
-		/* Each process sends the real and imaginary part the following way:
-		*  tag1 for the Real and tag2 for the imag.
-		*  Since we are using communicators, the ranks of the processes are local.
-		*  The results are always sent to the process with the lowest rank. Afterwards,
-		*  this processes will send the result to the master, who will store it.
-		*/
-		if(commonPS->rank<4){
-			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm1);
-			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm1);
-		} else if(commonPS->rank < 8){
-			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm2);
-			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm2);
-		} else if(commonPS->rank < 12){
-			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm3);
-			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm3);
-		} else if(commonPS->rank < 16){
-			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm4);
-			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm4);
-		} else{
-			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm5);
-			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm5);
-		}
-
-		if(commonPS->rank == 0){
-			// Rank 0 does its part of the task
-			H_EST[i*5] = res_part_real + I*res_part_imag;
-
-			// Rank 0 gathers the results of the rest of the master nodes
-			for(int gr=1; gr<5; gr++){
-				MPI_Recv(&res_part_real, 1, MPI_LONG_DOUBLE, gr*4, commonPS->tag1, MPI_COMM_WORLD, &commonPS->status);
-				MPI_Recv(&res_part_imag, 1, MPI_LONG_DOUBLE, gr*4, commonPS->tag2, MPI_COMM_WORLD, &commonPS->status);
-				H_EST[i*5 + gr] = res_part_real + I*res_part_imag;
-			}
-
-		} else if(commonPS->rank%4==0 && commonPS->rank!=0){
-			MPI_Send(&res_part_real, 1, MPI_LONG_DOUBLE, 0, commonPS->tag1, MPI_COMM_WORLD);
-			MPI_Send(&res_part_imag, 1, MPI_LONG_DOUBLE, 0, commonPS->tag2, MPI_COMM_WORLD);
-		}
-
-		MPI_Barrier(MPI_COMM_WORLD);
-    }
-
-    MPI_Group_free(&gr1);MPI_Group_free(&gr2);MPI_Group_free(&gr3);MPI_Group_free(&gr4);MPI_Group_free(&gr5);
-	MPI_Comm_free(&comm1);MPI_Comm_free(&comm2);MPI_Comm_free(&comm3);MPI_Comm_free(&comm4);MPI_Comm_free(&comm5);
 }
 
 
@@ -440,7 +367,6 @@ void WiFi_channel_estimation_PS_Cubic(long double complex H_EST[], Common_PS *co
 	MPI_Group gr1, gr2, gr3, gr4, gr5, orig_group;
 	int *ranks = (int *) malloc(4*sizeof(commonPS->rank));
 	MPI_Comm_group(MPI_COMM_WORLD, &orig_group);
-	MPI_Comm_group(MPI_COMM_WORLD, &orig_group);
 	ranks[0]=0;ranks[1]=1;ranks[2]=2;ranks[3]=3;
 	MPI_Group_incl(orig_group, 4, ranks, &gr1);
 	MPI_Comm_create(MPI_COMM_WORLD, gr1, &comm1);
@@ -465,14 +391,14 @@ void WiFi_channel_estimation_PS_Cubic(long double complex H_EST[], Common_PS *co
 
 		printf("Processing PS Cubic Interpolation...\n");
 
-		f0_r = creal(commonPS->H_PILOTS[0]);
-		f0_i = cimag(commonPS->H_PILOTS[0]);
-		f01_r   = creal((commonPS->H_PILOTS[1]-commonPS->H_PILOTS[0]) / delta);
-		f01_i   = cimag((commonPS->H_PILOTS[1]-commonPS->H_PILOTS[0]) / delta);
-		f12_r   = creal((commonPS->H_PILOTS[2]-commonPS->H_PILOTS[1]) / delta);
-		f12_i   = cimag((commonPS->H_PILOTS[2]-commonPS->H_PILOTS[1]) / delta);
-	    f23_r   = creal((commonPS->H_PILOTS[3]-commonPS->H_PILOTS[2]) / delta);
-	    f23_i   = cimag((commonPS->H_PILOTS[3]-commonPS->H_PILOTS[2]) / delta);
+		f0_r = creal(commonPS->H_PILOTS[P0]);
+		f0_i = cimag(commonPS->H_PILOTS[P0]);
+		f01_r   = creal((commonPS->H_PILOTS[P1]-commonPS->H_PILOTS[P0]) / delta);
+		f01_i   = cimag((commonPS->H_PILOTS[P1]-commonPS->H_PILOTS[P0]) / delta);
+		f12_r   = creal((commonPS->H_PILOTS[P2]-commonPS->H_PILOTS[P1]) / delta);
+		f12_i   = cimag((commonPS->H_PILOTS[P2]-commonPS->H_PILOTS[P1]) / delta);
+	    f23_r   = creal((commonPS->H_PILOTS[P3]-commonPS->H_PILOTS[P2]) / delta);
+	    f23_i   = cimag((commonPS->H_PILOTS[P3]-commonPS->H_PILOTS[P2]) / delta);
 	    f012_r  = creal((f12_r-f01_r) / delta);
 	    f012_i  = cimag((f12_i-f01_i) / delta);
 	    f123_r  = creal((f23_r-f12_r) / delta);
@@ -564,6 +490,7 @@ void WiFi_channel_estimation_PS_Cubic(long double complex H_EST[], Common_PS *co
 				MPI_Recv(&res_part_imag, 1, MPI_LONG_DOUBLE, gr*4, 1, MPI_COMM_WORLD, &commonPS->status);
 				H_EST[i*5 + gr] = res_part_real + I*res_part_imag;
 			}
+
 		} else if(commonPS->rank%4==0 && commonPS->rank!=0){
 			MPI_Send(&res_part_real, 1, MPI_LONG_DOUBLE, 0, 0, MPI_COMM_WORLD);
 			MPI_Send(&res_part_imag, 1, MPI_LONG_DOUBLE, 0, 1, MPI_COMM_WORLD);
@@ -573,6 +500,126 @@ void WiFi_channel_estimation_PS_Cubic(long double complex H_EST[], Common_PS *co
 	}
 
 	MPI_Group_free(&gr1);MPI_Group_free(&gr2);MPI_Group_free(&gr3);MPI_Group_free(&gr4);MPI_Group_free(&gr5);
+	MPI_Comm_free(&comm1);MPI_Comm_free(&comm2);MPI_Comm_free(&comm3);MPI_Comm_free(&comm4);MPI_Comm_free(&comm5);
+}
+
+/* ----------------------------------------------------------------------------------------*/
+/* -------------------------------- PS SINC INTERPOLATION ---------------------------------*
+*
+*  This function considers that there is 20 processes available. 5 different groups are created,
+*  each of them containing 4 processors. Each group will be assigned a value k, representing
+*  the index to compute. Each process within a group will compute 1 out of the 4 tasks that 
+*  each index requires to perform. Afterwars, a reduction operation will store the result on 
+*  the process whose rank is the lowest. Finally, this result will be sent to the master node.
+*  This process will repeat 11 times, so that the entire length of the vector is covered.
+*
+/* ----------------------------------------------------------------------------------------*/	
+void WiFi_channel_estimation_PS_Sinc(long double complex H_EST[], Common_PS *commonPS, int argc, char *argv[]){
+	int k;
+	long double complex myres;
+	long double res_part_real, res_part_imag, myres_real, myres_imag;
+	double a, b, c, d;
+	long double delta = P1 - P0;
+
+	/* Communicators creation. 5 groups of 4 processes are created
+	*  in order to perform a reduction operation. A communicator is
+	*  assigned to each group, allowing them to share the results after
+	*  the reduction.
+	*/
+	MPI_Comm comm1, comm2, comm3, comm4, comm5;
+	MPI_Group gr1, gr2, gr3, gr4, gr5, orig_group;
+	int *ranks = (int *) malloc(4*sizeof(commonPS->rank));
+	MPI_Comm_group(MPI_COMM_WORLD, &orig_group);
+	MPI_Comm_group(MPI_COMM_WORLD, &orig_group);
+	ranks[0]=0;ranks[1]=1;ranks[2]=2;ranks[3]=3;
+	MPI_Group_incl(orig_group, 4, ranks, &gr1);
+	MPI_Comm_create(MPI_COMM_WORLD, gr1, &comm1);
+	ranks[0]=4;ranks[1]=5;ranks[2]=6;ranks[3]=7;
+	MPI_Group_incl(orig_group, 4, ranks, &gr2);
+	MPI_Comm_create(MPI_COMM_WORLD, gr2, &comm2);
+	ranks[0]=8;ranks[1]=9;ranks[2]=10;ranks[3]=11;
+	MPI_Group_incl(orig_group, 4, ranks, &gr3);
+	MPI_Comm_create(MPI_COMM_WORLD, gr3, &comm3);
+	ranks[0]=12;ranks[1]=13;ranks[2]=14;ranks[3]=15;
+	MPI_Group_incl(orig_group, 4, ranks, &gr4);
+	MPI_Comm_create(MPI_COMM_WORLD, gr4, &comm4);
+	ranks[0]=16;ranks[1]=17;ranks[2]=18;ranks[3]=19;
+	MPI_Group_incl(orig_group, 4, ranks, &gr5);
+	MPI_Comm_create(MPI_COMM_WORLD, gr5, &comm5);
+	free(ranks);
+	
+	if(commonPS->rank == 0){
+		printf("Processing PS Sinc Interpolation...\n");
+	}
+
+	for(int i=0; i<11; i++){
+
+		k = floor(commonPS->rank/4) + 5*i;
+
+		if(k<SAMPUTIL){
+
+			if(commonPS->rank%4 == 0){
+				a = (k-P0) / delta;
+				myres = commonPS->H_PILOTS[P0]*sinc(a);
+			}else if(commonPS->rank%4 == 1){
+				b = (k-P1) / delta;
+				myres = commonPS->H_PILOTS[P1]*sinc(b);
+			}else if(commonPS->rank%4 == 2){
+				c = (k-P2) / delta;
+				myres = commonPS->H_PILOTS[P2]*sinc(c);
+			}else if(commonPS->rank%4 == 3){
+				d = (k-P3) / delta;
+				myres = commonPS->H_PILOTS[P3]*sinc(d);
+			}
+
+			myres_real = creal(myres); myres_imag = cimag(myres);
+		} else {
+			myres_real = 0.0; myres_imag = 0.0;
+		}
+
+		/* Each process sends the real and imaginary part the following way:
+		*  tag1 for the Real and tag2 for the imag.
+		*  Since we are using communicators, the ranks of the processes are local.
+		*  The results are always sent to the process with the lowest rank. Afterwards,
+		*  this processes will send the result to the master, who will store it.
+		*/
+		if(commonPS->rank<4){
+			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm1);
+			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm1);
+		} else if(commonPS->rank < 8){
+			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm2);
+			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm2);
+		} else if(commonPS->rank < 12){
+			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm3);
+			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm3);
+		} else if(commonPS->rank < 16){
+			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm4);
+			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm4);
+		} else{
+			MPI_Reduce(&myres_real,&res_part_real,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm5);
+			MPI_Reduce(&myres_imag,&res_part_imag,1,MPI_LONG_DOUBLE,MPI_SUM,0,comm5);
+		}
+
+		if(commonPS->rank == 0){
+			// Rank 0 does its part of the task
+			H_EST[i*5] = res_part_real + I*res_part_imag;
+
+			// Rank 0 gathers the results of the rest of the master nodes
+			for(int gr=1; gr<5; gr++){
+				MPI_Recv(&res_part_real, 1, MPI_LONG_DOUBLE, gr*4, commonPS->tag1, MPI_COMM_WORLD, &commonPS->status);
+				MPI_Recv(&res_part_imag, 1, MPI_LONG_DOUBLE, gr*4, commonPS->tag2, MPI_COMM_WORLD, &commonPS->status);
+				H_EST[i*5 + gr] = res_part_real + I*res_part_imag;
+			}
+
+		} else if(commonPS->rank%4==0 && commonPS->rank!=0){
+			MPI_Send(&res_part_real, 1, MPI_LONG_DOUBLE, 0, commonPS->tag1, MPI_COMM_WORLD);
+			MPI_Send(&res_part_imag, 1, MPI_LONG_DOUBLE, 0, commonPS->tag2, MPI_COMM_WORLD);
+		}
+
+		MPI_Barrier(MPI_COMM_WORLD);
+    }
+
+    MPI_Group_free(&gr1);MPI_Group_free(&gr2);MPI_Group_free(&gr3);MPI_Group_free(&gr4);MPI_Group_free(&gr5);
 	MPI_Comm_free(&comm1);MPI_Comm_free(&comm2);MPI_Comm_free(&comm3);MPI_Comm_free(&comm4);MPI_Comm_free(&comm5);
 }
 
@@ -637,8 +684,8 @@ void WiFi_channel_estimation_PS_MMSE1(long double complex tx_symbols[], long dou
 	}
 
 	// Each Process creates its own FMatrix (necessary for invF)
-	MPI_Bcast(&(Fmatrix_Re[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&(Fmatrix_Im[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Bcast(&(Fmatrix_Re[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, commonPS->comm);
+	MPI_Bcast(&(Fmatrix_Im[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, commonPS->comm);
 	doubleToComplex(SAMPUTIL,Fmatrix,Fmatrix_Re,Fmatrix_Im);
 	
 	MPI_Barrier(MPI_COMM_WORLD);
@@ -649,10 +696,12 @@ void WiFi_channel_estimation_PS_MMSE1(long double complex tx_symbols[], long dou
 	commonPS_local.tag2 = commonPS->tag2;
 	commonPS_local.tag3 = commonPS->tag3;
 	commonPS_local.status = commonPS->status;
+	commonPS_local.comm = commonPS->comm;
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	inverse_mpi(Fmatrix, SAMPUTIL, invF, &commonPS_local, argc, argv);				//invF
+	// inverse_mpi_omp(Fmatrix, SAMPUTIL, invF, &commonPS_local, argc, argv);				//invF
 
 	if(commonPS->rank==0){
 
@@ -675,11 +724,12 @@ void WiFi_channel_estimation_PS_MMSE1(long double complex tx_symbols[], long dou
 		complexToDouble(SAMPUTIL,Ryy,Ryy_Re,Ryy_Im);	
 	}
 
-	MPI_Bcast(&(Ryy_Re[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&(Ryy_Im[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Bcast(&(Ryy_Re[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, commonPS->comm);
+	MPI_Bcast(&(Ryy_Im[0][0]),SAMPUTIL*SAMPUTIL, MPI_LONG_DOUBLE, 0, commonPS->comm);
 	doubleToComplex(SAMPUTIL,Ryy,Ryy_Re,Ryy_Im);
 	
 	inverse_mpi(Ryy,SAMPUTIL,invRyy, &commonPS_local, argc, argv);						// invRyy
+	// inverse_mpi_omp(Ryy,SAMPUTIL,invRyy, &commonPS_local, argc, argv);						// invRyy
 
 	if(commonPS->rank==0){
 	 	multiply(Fmatrix,SAMPUTIL,SAMPUTIL,temp2,SAMPUTIL,SAMPUTIL,temp1);				// temp1 = F*Rhy
@@ -690,12 +740,6 @@ void WiFi_channel_estimation_PS_MMSE1(long double complex tx_symbols[], long dou
 			H_EST[r] = temp2[r][0];
 	}
 }
-// 20 -> 22760000.000000
-// 15 -> 24870000.000000
-// 10 -> 33350000.000000
-// 05 -> 50800000.000000
-// 02 -> 110600000.000000
-// 01 -> buff...
 
 /* ----------------------------------------------------------------------------------------*/
 /* -------------------------------- PS MMSE INTERPOLATION (2) -----------------------------*
@@ -967,3 +1011,71 @@ void WiFi_channel_estimation_PS_MMSE2(long double complex tx_symbols[], long dou
 			H_EST[r] = temp2[r][0];
 	}
 }
+
+/*OUTPUT 1
+MPI
+20 -> 22760000.000000
+15 -> 24870000.000000
+10 -> 33350000.000000
+05 -> 50800000.000000
+02 -> 110600000.000000
+01 -> 208640000.000000
+
+MPI + OpenMP
+20 -> 10690000.000000
+15 -> 11650000.000000
+10 -> 13410000.000000
+05 -> 19480000.000000
+02 -> 42810000.000000
+01 -> 81380000.000000
+
+OUTPUT 2 - MPI + OpenMP
+PS MMSE Interpolation (1) - groups: 1 Proc. per group: 20
+PS MMSE Interpolation (1) - Elapsed time 10470000.000000
+PS MMSE Interpolation (1) - Equival time 10470000.000000
+
+PS MMSE Interpolation (1) - groups: 2 Proc. per group: 10
+PS MMSE Interpolation (1) - Elapsed time 17430000.000000/2=8720000
+PS MMSE Interpolation (1) - Equival time 10470000
+
+PS MMSE Interpolation (1) - groups: 4 Proc. per group: 5
+PS MMSE Interpolation (1) - Elapsed time 26060000.000000/4=6520000
+PS MMSE Interpolation (1) - Equival time 10470000
+
+PS MMSE Interpolation (1) - groups: 5 Proc. per group: 4
+PS MMSE Interpolation (1) - Elapsed time 33950000.000000/5=6790000
+PS MMSE Interpolation (1) - Equival time 10470000
+
+PS MMSE Interpolation (1) - groups: 10 Proc. per group: 2
+PS MMSE Interpolation (1) - Elapsed time 57360000.000000=5740000
+PS MMSE Interpolation (1) - Equival time 10470000
+
+PS MMSE Interpolation (1) - groups: 20 Proc. per group: 1
+PS MMSE Interpolation (1) - Elapsed time 109650000.000000/20=5490000
+PS MMSE Interpolation (1) - Equival time 10470000
+
+OUTPUT 3 - MPI
+PS MMSE Interpolation (1) - groups: 1 Proc. per group: 20
+PS MMSE Interpolation (1) - Elapsed time 24160000.000000
+PS MMSE Interpolation (1) - Equival time 24160000.000000
+
+PS MMSE Interpolation (1) - groups: 2 Proc. per group: 10
+PS MMSE Interpolation (1) - Elapsed time 38140000.000000/2=19070000.000000
+PS MMSE Interpolation (1) - Equival time 24160000.000000
+
+PS MMSE Interpolation (1) - groups: 4 Proc. per group: 5
+PS MMSE Interpolation (1) - Elapsed time 64840000.000000/4=16210000.000000
+PS MMSE Interpolation (1) - Equival time 24160000.000000
+
+PS MMSE Interpolation (1) - groups: 5 Proc. per group: 4
+PS MMSE Interpolation (1) - Elapsed time 80390000.000000/5=16070000.000000
+PS MMSE Interpolation (1) - Equival time 24160000.000000
+
+PS MMSE Interpolation (1) - groups: 10 Proc. per group: 2
+PS MMSE Interpolation (1) - Elapsed time 146370000.000000/10=14637000.000000
+PS MMSE Interpolation (1) - Equival time 24160000.000000
+
+PS MMSE Interpolation (1) - groups: 20 Proc. per group: 1
+PS MMSE Interpolation (1) - Elapsed time 274340000.000000/20=13710000.000000
+PS MMSE Interpolation (1) - Equival time 24160000.000000
+*/

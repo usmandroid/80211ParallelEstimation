@@ -6,6 +6,9 @@
 #BSUB -q ht-10g
 #BSUB cwd /home/bocanegra.c/FP/
 work=/home/bocanegra.c/FP/
+export OMP_NUM_THREADS=60
+export OMP_STACKSIZE=10G
+export OMP_NESTED=TRUE
 
 cd $work
 tempfile1=hostlistrun
@@ -24,4 +27,4 @@ done
 ###DO NOT EDIT ANYTHING ABOVE THIS LINE#########
 #####################################################
 
-mpirun -np 20 -prot -TCP -lsf ./main_mpi
+mpirun -np 15 -prot -TCP -lsf ./main_mpi

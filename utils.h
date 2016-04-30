@@ -1,14 +1,17 @@
+#include <mpi.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <vector>
 #include <complex.h>
-#include <mpi.h>
+#include <time.h>
 
 #define PI M_PI
 #define TWOPI (2.0*PI)
 #define SIZESYMBOL 53*15
 #define SAMPUTIL 53
+#define THREADS_TEST 60
 #define OFDMBLK 15
 #define P0 5
 #define P1 19
@@ -20,14 +23,16 @@ typedef struct {
     int tag1, tag2, tag3;
     long double complex conj1, conj2;
     MPI_Status status;
+    MPI_Comm comm;
 } Common_LT;
 
 typedef struct {
-    int numprocs, rank, res_LS;
+    int numprocs, rank;
     int tag1, tag2, tag3, tag4, tag5, tag6;
-    long double complex H_PILOTS[4];
+    long double complex H_PILOTS[SAMPUTIL];
     long double H_PILOTS_real[4], H_PILOTS_imag[4];
     MPI_Status status;
+    MPI_Comm comm;
 } Common_PS;
 
 void hermitian(long double complex **M, int row, int col, long double complex **res);
@@ -54,8 +59,9 @@ void swap_cols(long double complex **mat, int order, int row1, int row2);
 
 void inverse(long double complex **A, int order, long double complex **Y);
 void inverse_omp(long double complex **A, int order, long double complex **Y);
+void inverse_mpi_old(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]);
 void inverse_mpi(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]);
-void inverse_mpi_beta(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]);
+void inverse_mpi_omp(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]);
 
 void fft_impl(double data[], int nn, int isign);
 double sinc(double input);

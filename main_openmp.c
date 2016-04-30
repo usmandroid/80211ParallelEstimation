@@ -1,8 +1,3 @@
-#include <omp.h>
-#include <math.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
 #include "inputs.h"
 #include "utils.h"
 
@@ -40,20 +35,21 @@ int main(void) {
 	}
 
 	start_tot = clock();
-	printf("CLOCKS_PER_SEC = %d\n",CLOCKS_PER_SEC);
-	printf("Processing LT Least Squares...\n"); start = clock(); 
-	WiFi_channel_estimation_LT_LS(tx_symb_vec,rx_symb_vec,H_EST_LT_LS); stop = clock();
-	printf("Elapsed time: %f\n",(double) (stop - start));		
-	printf("Processing PS Linear Interpolation...\n"); start = clock(); 
-	WiFi_channel_estimation_PS_Linear(tx_symb_vec,rx_symb_vec,H_EST_PS_Linear); stop = clock();
-	printf("Elapsed time: %f\n",(double) (stop - start));		
-	printf("Processing PS Cubic Interpolation...\n"); start = clock();
-	WiFi_channel_estimation_PS_Cubic(tx_symb_vec,rx_symb_vec,H_EST_PS_Cubic); stop = clock();
-	printf("Elapsed time: %f\n",(double) (stop - start));		
-	printf("Processing PS Sinc Interpolation...\n"); start = clock();
-	WiFi_channel_estimation_PS_Sinc(tx_symb_vec,rx_symb_vec,H_EST_PS_Sinc); stop = clock();
-	printf("Elapsed time: %f\n",(double) (stop - start));		
+	// printf("CLOCKS_PER_SEC = %d\n",CLOCKS_PER_SEC);
+	// printf("Processing LT Least Squares...\n"); start = clock(); 
+	// WiFi_channel_estimation_LT_LS(tx_symb_vec,rx_symb_vec,H_EST_LT_LS); stop = clock();
+	// printf("Elapsed time: %f\n",(double) (stop - start));		
+	// printf("Processing PS Linear Interpolation...\n"); start = clock(); 
+	// WiFi_channel_estimation_PS_Linear(tx_symb_vec,rx_symb_vec,H_EST_PS_Linear); stop = clock();
+	// printf("Elapsed time: %f\n",(double) (stop - start));		
+	// printf("Processing PS Cubic Interpolation...\n"); start = clock();
+	// WiFi_channel_estimation_PS_Cubic(tx_symb_vec,rx_symb_vec,H_EST_PS_Cubic); stop = clock();
+	// printf("Elapsed time: %f\n",(double) (stop - start));		
+	// printf("Processing PS Sinc Interpolation...\n"); start = clock();
+	// WiFi_channel_estimation_PS_Sinc(tx_symb_vec,rx_symb_vec,H_EST_PS_Sinc); stop = clock();
+	// printf("Elapsed time: %f\n",(double) (stop - start));		
 	printf("Processing PS MMSE...\n"); start = clock();
+	printf("THREADS_TEST = %d\n",THREADS_TEST);
 	WiFi_channel_estimation_PS_MMSE(tx_symb_vec,rx_symb_vec,Fmatrix,OW2,H_EST_LT_LS,H_EST_PS_MMSE); stop = clock();
 	printf("Elapsed time: %f\n",(double) (stop - start));		
 

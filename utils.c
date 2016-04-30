@@ -272,8 +272,7 @@ void inverse_mpi_old(long double complex **A, int order, long double complex **Y
 
 void inverse_mpi(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]) {
     // get the determinant of a
-    //long double complex det = 1.0/CalcDeterminant(A,order);            // Regular Method
-    long double complex det = 1.0/determinant_impl_rec(A,order);         // Cramer Method
+    long double complex det = 1.0/determinant_impl_rec(A,order);    // Cramer Method Sequential
     long double complex temporal, res;
     int i,j;
 
@@ -313,8 +312,8 @@ void inverse_mpi(long double complex **A, int order, long double complex **Y, Co
         }
 
         printf("Proc %d sends to 0 \n", commonPS->rank);
-        MPI_Send(res_real, order*numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag1, MPI_COMM_WORLD);
-        MPI_Send(res_imag, order*numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag2, MPI_COMM_WORLD);
+        MPI_Send(res_real, order*numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag1, commonPS->comm);
+        MPI_Send(res_imag, order*numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag2, commonPS->comm);
 
     } else {
         // Proc 0 does its part of the job
@@ -330,8 +329,8 @@ void inverse_mpi(long double complex **A, int order, long double complex **Y, Co
         // Proc 0 receives results from rest of processes
         for(int proc=1 ; proc<commonPS->numprocs; proc++){
             printf("\t\tProc 0 recv from %d\n",proc);
-            MPI_Recv(res_real, order*numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag1, MPI_COMM_WORLD, &commonPS->status);
-            MPI_Recv(res_imag, order*numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag2, MPI_COMM_WORLD, &commonPS->status);
+            MPI_Recv(res_real, order*numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag1, commonPS->comm, &commonPS->status);
+            MPI_Recv(res_imag, order*numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag2, commonPS->comm, &commonPS->status);
             if(proc<set1){
                 for(int j=0; j<SAMPUTIL; j++){
                     for(int task=0; task<numTasks1; task++){
@@ -346,6 +345,90 @@ void inverse_mpi(long double complex **A, int order, long double complex **Y, Co
                 }
             }
         }
+    }
+
+    // release memory
+    delete [] temp;
+    delete [] minor;
+}
+
+void inverse_mpi_omp(long double complex **A, int order, long double complex **Y, Common_PS *commonPS, int argc, char *argv[]) {
+    // get the determinant of A
+    long double complex det = 1.0/determinant_impl_omp(A,order);    // Cramer Method OpenMP
+    long double complex temporal, res;
+    int i,j;
+
+    int numTasks1 = ceil((double) SAMPUTIL/commonPS->numprocs);
+    int numTasks2 = floor((double) SAMPUTIL/commonPS->numprocs);
+    int set1 = SAMPUTIL%commonPS->numprocs;
+    long double res_real[SAMPUTIL][numTasks1], res_imag[SAMPUTIL][numTasks1];
+ 
+    // memory allocation
+    long double complex *temp = new long double complex [(order-1)*(order-1)];
+    long double complex **minor = new long double complex *[order-1];
+
+    for(int i=0;i<order-1;i++)
+        minor[i] = temp+(i*(order-1));
+
+    if(commonPS->rank!=0){
+        if(commonPS->rank<set1){
+            // set 1
+            for(j=0;j<order;j++) {
+                for(int task=0; task<numTasks1; task++){
+                    GetMinor(A,minor,j,commonPS->rank+task*commonPS->numprocs,order);
+                    res = det*determinant_impl_omp(minor,order-1);              // Cramer Method OpenMP Y[commonPS->rank][j] = res1
+                    if( (commonPS->rank+task*commonPS->numprocs+j)%2 == 1) {res = (-1)*res; }
+                    res_real[j][task] = creal(res); res_imag[j][task] = cimag(res);
+                }
+            }
+        } else {
+            // set 2
+            for(j=0;j<order;j++) {
+                for(int task=0; task<numTasks2; task++){
+                    GetMinor(A,minor,j,commonPS->rank+task*commonPS->numprocs,order);
+                    res = det*determinant_impl_omp(minor,order-1);              // Cramer Method OpenMP Y[commonPS->rank][j] = res1
+                    if( (commonPS->rank+task*commonPS->numprocs+j)%2 == 1) {res = (-1)*res; }
+                    res_real[j][task] = creal(res); res_imag[j][task] = cimag(res);
+                }
+            }
+        }
+
+        // printf("Proc %d sends to 0 \n", commonPS->rank);
+        MPI_Send(res_real, order*numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag1, commonPS->comm);
+        MPI_Send(res_imag, order*numTasks1, MPI_LONG_DOUBLE, 0, commonPS->tag2, commonPS->comm);
+
+    } else {
+        // Proc 0 does its part of the job
+        for(j=0;j<order;j++) {
+            for(int task=0; task<numTasks1; task++){
+                GetMinor(A,minor,j,0+task*commonPS->numprocs,order);
+                Y[0+task*commonPS->numprocs][j] = det*determinant_impl_omp(minor,order-1);              // Cramer Method Y[commonPS->rank][j] = res1
+                if( (0+task*commonPS->numprocs+j)%2 == 1) {Y[0+task*commonPS->numprocs][j] = (-1)*Y[0+task*commonPS->numprocs][j]; }
+            }
+            // printf("\t\tProc 0 finished round %d\n",j);
+        }
+
+        // Proc 0 receives results from rest of processes
+        for(int proc=1 ; proc<commonPS->numprocs; proc++){
+            // printf("\t\tProc 0 recv from %d\n",proc);
+            MPI_Recv(res_real, order*numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag1, commonPS->comm, &commonPS->status);
+            MPI_Recv(res_imag, order*numTasks1, MPI_LONG_DOUBLE, proc, commonPS->tag2, commonPS->comm, &commonPS->status);
+            if(proc<set1){
+                for(int j=0; j<SAMPUTIL; j++){
+                    for(int task=0; task<numTasks1; task++){
+                        Y[proc + task*commonPS->numprocs][j] = res_real[j][task] + I*res_imag[j][task];
+                    }
+                }
+            } else {
+                for(int j=0; j<SAMPUTIL; j++){
+                    for(int task=0; task<numTasks2; task++){
+                        Y[proc + task*commonPS->numprocs][j] = res_real[j][task] + I*res_imag[j][task];
+                    }
+                }
+            }
+        }
+
+        // printf("\tRoot in MMSE finished\n");
     }
 
     // release memory
@@ -560,9 +643,11 @@ long double complex determinant_impl_omp( long double complex **mat, int order) 
     last_row = order;
 
     // row 0 stays unaltered
+    #pragma omp parallel for num_threads(THREADS_TEST) schedule(static)
     for (i=1; i < last_row; i++) {      // last_row = mat_size unless get an all zero row
         
-        #pragma omp parallel for num_threads(i) schedule(static)
+        // #pragma omp parallel for num_threads(i) schedule(static)
+        //#pragma omp parallel for num_threads(THREADS_TEST) schedule(static)
         for (k=0; k < i; k++) {
             tmp_frac = mat[i][k] / mat[k][k];
             for (j = k+1; j < order; j++) {
