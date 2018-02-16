@@ -1,5 +1,6 @@
 function [ H_EST_MMSE_PILOT_AV ] = WiFi_channel_estimation_PS_MMSE(tx,rx,ow2,H_EST,sampUtil,no_OFDM_blocks)
     H_EST_MMSE_PILOT = zeros(sampUtil,4);
+    H_EST_MMSE_PILOT = complex(H_EST_MMSE_PILOT);
     tx(1:5,:)=0;
     tx(7:19,:)=0;
     tx(21:33,:)=0;
@@ -12,12 +13,15 @@ function [ H_EST_MMSE_PILOT_AV ] = WiFi_channel_estimation_PS_MMSE(tx,rx,ow2,H_E
     rx(47:end,:)=0;
 
     F = zeros(sampUtil,sampUtil);
+    F = complex(F);
     for f = 1:sampUtil
         for t = 1:sampUtil
             F(t,f) = exp(-1i*2*pi*(t-1)*(f-1)/sampUtil);
         end
     end
-
+    
+    Rhh = zeros(sampUtil,sampUtil);
+    Rhh = complex(Rhh);
     Rhh = ifft(H_EST,sampUtil)*ifft(H_EST,sampUtil)';
 
     for i = 1:no_OFDM_blocks
