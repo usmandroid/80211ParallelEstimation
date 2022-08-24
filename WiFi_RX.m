@@ -64,6 +64,7 @@ tx_symb1 = reshape(tx_symb,[53*15,1]);
 rx_symb1 = reshape(rx_symb,[53*15,1]);
 
 %% PLOT SECTION
+figure
 plot((-26:1:26),H_EST_LT_LS);
 legend('LT Least Square');
 xlabel('Subcarrier Number');
@@ -76,6 +77,30 @@ hold on
 plot((-26:1:26),H_EST_PS_Cubic);
 plot((-26:1:26),H_EST_PS_Sinc);
 plot((-26:1:26),H_EST_PS_MMSE);
+y1=get(gca,'ylim');
+hold on
+plot([-7 -7],y1,'Color','k','LineStyle','--'); plot([-21 -21],y1,'Color','k','LineStyle','--'); 
+plot([7 7],y1,'Color','k','LineStyle','--'); plot([21 21],y1,'Color','k','LineStyle','--');
+legend('PS Linear Interpolation','PS Cubic Interpolation','PS Sinc Interpolation','PS MMSE Interpolation');
+xlabel('Subcarrier Number');
+ylabel('Frequency Response');
+title('Channel Frequency Response using Pilots');
+
+%% PLOT SECTION
+figure
+plot((-26:1:26),imag(H_EST_LT_LS));
+hold on
+legend('LT Least Square');
+xlabel('Subcarrier Number');
+ylabel('Frequency Response');
+title('Channel Frequency Response using the LT Sequence');
+
+
+plot((-26:1:26),imag(H_EST_PS_Linear));
+hold on
+plot((-26:1:26),imag(H_EST_PS_Cubic));
+plot((-26:1:26),imag(H_EST_PS_Sinc));
+plot((-26:1:26),imag(H_EST_PS_MMSE));
 y1=get(gca,'ylim');
 hold on
 plot([-7 -7],y1,'Color','k','LineStyle','--'); plot([-21 -21],y1,'Color','k','LineStyle','--'); 
